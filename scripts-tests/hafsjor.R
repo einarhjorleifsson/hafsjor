@@ -1,0 +1,83 @@
+# remotes::install_github("trafficonese/leaflet.extras")
+library(leaflet)
+library(leaflet.extras)
+library(htmlwidgets)
+m0 <-
+  leaflet() |>
+  addTiles(urlTemplate = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+           attribution = 'Data source: <a href="https://www.hafogvatn.is">Marine & Freshwater Research Institute</a>',
+           group = "Hnöttur") |>
+  addTiles(urlTemplate = "https://heima.hafro.is/~einarhj/tiles/haf/050m/{z}/{x}/{-y}.png",
+           group = "Botnlag",
+           options = tileOptions(minZoom = 5, maxZoom = 16)) |>
+  addTiles(urlTemplate = "https://heima.hafro.is/~einarhj/tiles/haf/020m/{z}/{x}/{-y}.png",
+           group = "Botnlag",
+           options = tileOptions(minZoom = 5, maxZoom = 16)) |>
+  addTiles(urlTemplate = "https://heima.hafro.is/~einarhj/tiles/lhg/{z}/{x}/{-y}.png",
+           group = "Botnlag",
+           options = tileOptions(minZoom = 0, maxZoom = 16)) |>
+  addTiles(urlTemplate = "https://heima.hafro.is/~einarhj/tiles/vestfirdir_dpi/{z}/{x}/{-y}.png",
+           group = "Botnlag",
+           options = tileOptions(minZoom = 0, maxZoom = 16)) |>
+  setView(-20, 65, zoom = 6) |>
+  addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+              layers = "hafro:trawl_3857_byte",
+              group = "Fish trawl",
+              options = WMSTileOptions(format = "image/png",
+                                       transparent  = TRUE,
+                                       crs = "EPSG:3057",
+                                       opacity = 1)) |>
+  addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+              layers = "hafro:shrimp_3857_byte",
+              group = "Shrimp trawl",
+              options = WMSTileOptions(format = "image/png",
+                                       transparent  = TRUE,
+                                       #crs = "EPSG:3057",
+                                       opacity = 1)) |>
+  addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+              layers = "hafro:nephrops_3857_byte",
+              group = "Nephrops trawl",
+              options = WMSTileOptions(format = "image/png",
+                                       transparent  = TRUE,
+                                       crs = "EPSG:3057",
+                                       opacity = 1)) |>
+  addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+              layers = "hafro:longline_3857_byte",
+              group = "Longline",
+              options = WMSTileOptions(format = "image/png",
+                                       transparent  = TRUE,
+                                       crs = "EPSG:3057",
+                                       opacity = 1))
+
+m <-
+  m0 |>
+  addGroupedLayersControl(
+    baseGroups = c("Botnlag", "Hnöttur"),
+    overlayGroups = list(
+      "Veiðar" = c("Fish trawl", "Shrimp trawl", "Nephrops trawl", "Longline"),
+      "Dýr" = c("Botndýr"),
+      "Lög" = c("12 mílur"),
+      "Reglugerðir" = c("Surtsey")
+    ),
+    position = "topleft",
+    options = groupedLayersControlOptions(
+      groupCheckboxes = TRUE,
+      collapsed = FALSE,
+      groupsCollapsable = TRUE,
+      sortLayers = FALSE,
+      sortGroups = FALSE,
+      sortBaseLayers = FALSE
+      #, exclusiveGroups = c("Shrimp trawl", "Nephrops trawl", "Longline")
+    )
+  )
+
+m <-
+  m |>
+  hideGroup(c("Shrimp trawl", "Nephrops trawl", "Longline", "Botndýr", "12 mílur", "Surtsey"))
+m |>
+  saveWidget(file = "/net/hafri.hafro.is/export/home/hafri/einarhj/public_html/hafsjor/index.html",
+           selfcontained = FALSE)
+system("chmod -R a+rX /net/hafri.hafro.is/export/home/hafri/einarhj/public_html/hafsjor")
+
+
+
