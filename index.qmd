@@ -19,6 +19,12 @@ m0 <-
   setView(-19, 65, zoom = 5) |>
   hs_add_base() |> 
   hs_add_veidar() |> 
+  addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+                layers = "test:sample_species_lines_v",
+                group = "Botndýr",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         opacity = 1)) |>
   hs_add_log()
 
 
@@ -27,14 +33,14 @@ m <-
   addGroupedLayersControl(
     baseGroups = c("Hnöttur", "Botnlag"),
     overlayGroups = list(
-      "Veiðar" = c("Fish trawl", "Shrimp trawl", "Nephrops trawl", "Longline"),
-      "Dýr" = c("Botndýr"),
+      "Sókn" = c("Fish trawl", "Shrimp trawl", "Nephrops trawl", "Longline"),
+      "Lífríki" = c("Botndýr"),
       "Lög" = c("12 mílur", "EEZ"),
       "Reglugerðir" = c("Nothing here yet")
     ),
     position = "topright",
     options = groupedLayersControlOptions(
-      exclusiveGroups = NULL, #c("Veiðar"),
+      exclusiveGroups = NULL, #c("Sókn"),
       groupCheckboxes = TRUE,
       collapsed = FALSE,
       groupsCollapsable = TRUE,
