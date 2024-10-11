@@ -4,10 +4,12 @@ project:
 website:
   title: "Hafsjór"
   navbar:
-    left:
-      - href: index.qmd
-        text: Home
-      - about.qmd
+    right:
+      - text: Documents
+        menu:
+          - leaflet.qmd
+      - icon: github
+        href: https://github.com/einarhjorleifsson/hafsjor
 
 format:
   html:
