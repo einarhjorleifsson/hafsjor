@@ -77,3 +77,16 @@ hs_add_log <- function(map) {
                                          opacity = 1))
 
 }
+
+hs_add_lifriki <- function(map) {
+ map |>
+    leaflet.extras2::addWMS(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+           layers = "test:sample_species_lines_v",
+           group = "Botndýr",
+           popupOptions = popupOptions(maxWidth = 600),
+           checkempty = TRUE,
+           options = WMSTileOptions(
+             transparent = TRUE,
+             format = "image/png",
+             info_format = "text/html"))
+}

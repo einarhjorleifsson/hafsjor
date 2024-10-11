@@ -3,6 +3,8 @@ project:
 
 website:
   title: "Hafsjór"
+  site-url: https://heima.hafro.is/~einarhj/hafsjor
+  # favicon: "image/hafro_logo.png"
   navbar:
     right:
       - text: Documents
