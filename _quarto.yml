@@ -9,6 +9,7 @@ website:
     right:
       - text: Documents
         menu:
+          - speed.qmd
           - leaflet.qmd
           - links.qmd
       - icon: github
