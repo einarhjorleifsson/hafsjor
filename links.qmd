@@ -1,0 +1,25 @@
+---
+title: "Useful links"
+---
+
+
+* [JavaScript for R](https://book.javascript-for-r.com)
+* [How to write a useful htmlwidgets in R: tips and walk-through a real example](https://deanattali.com/blog/htmlwidgets-tips)
+* [Crosstalk](https://rstudio.github.io/crosstalk)
+* [Leaflet in Practice: Create webmaps using the JavaScript Leaflet library](https://bookdown.org/sammigachuhi/book-leaflet-1)
+* [Working with JavaScript Syntax in R](https://cran.r-project.org/web/packages/js/vignettes/intro.html)
+* [Introduction to V8 for R](https://cran.r-project.org/web/packages/V8/vignettes/v8_intro.html)
+
+
+### htmlwidgets
+
+* [Creating a widget](https://www.htmlwidgets.org/develop_intro.html)
+* [How to write a useful htmlwidgets in R: tips and walk-through a real example - a bit old](https://deanattali.com/blog/htmlwidgets-tips)
+* [is-it-possible-to-include-custom-css-in-htmlwidgets-for-r-and-or-leafletr](https://stackoverflow.com/questions/35720698/is-it-possible-to-include-custom-css-in-htmlwidgets-for-r-and-or-leafletr)
+* [Possible to create a leaflet map and a rendering table without shiny?](https://stackoverflow.com/questions/49938532/possible-to-create-a-leaflet-map-and-a-rendering-table-without-shiny)
+* [Server(shiny)-less dashboards with R, {htmlwidgets} and {crosstalk}](https://www.brodrigues.co/blog/2021-03-02-no_shiny_dashboard)
+
+### Crosstalk
+
+* [Leaflet + Flexdashboard + DT + Crosstalk](https://matt-dray.github.io/earl18-crosstalk/04_leaflet-flexdash-dt-crosstalk.html)
+* [crosstalk flexdashboard](https://nicar.r-journalism.com/2020/crosstalk-flexdashboard.html) - nice step by step

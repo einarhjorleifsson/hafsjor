@@ -88,5 +88,6 @@ hs_add_lifriki <- function(map) {
            options = WMSTileOptions(
              transparent = TRUE,
              format = "image/png",
-             info_format = "text/html"))
+             info_format = "text/html",
+             tiled = TRUE))
 }

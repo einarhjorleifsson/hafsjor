@@ -9,7 +9,6 @@ warning: false
 #| column: screen
 #| out-width: 100%
 #| fig-height: 9
-# remotes::install_github("trafficonese/leaflet.extras")
 library(leaflet)
 library(leaflet.extras)
 library(leaflet.extras2)
@@ -26,7 +25,7 @@ m0 <-
 
 m <-
   m0 |>
-  addGroupedLayersControl(
+  leaflet.extras::addGroupedLayersControl(
     baseGroups = c("Hnöttur", "Botnlag"),
     overlayGroups = list(
       "Sókn" = c("Fish trawl", "Shrimp trawl", "Nephrops trawl", "Longline"),
@@ -35,7 +34,7 @@ m <-
       "Reglugerðir" = c("Nothing here yet")
     ),
     position = "topright",
-    options = groupedLayersControlOptions(
+    options = leaflet.extras::groupedLayersControlOptions(
       exclusiveGroups = NULL, #c("Sókn"),
       groupCheckboxes = TRUE,
       collapsed = FALSE,

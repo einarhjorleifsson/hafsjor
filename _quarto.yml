@@ -10,6 +10,7 @@ website:
       - text: Documents
         menu:
           - leaflet.qmd
+          - links.qmd
       - icon: github
         href: https://github.com/einarhjorleifsson/hafsjor
 
@@ -18,6 +19,3 @@ format:
     theme: cosmo
     css: styles.css
     toc: false
-
-
-
