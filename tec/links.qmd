@@ -1,0 +1,72 @@
+---
+title: "Useful links"
+---
+
+R packages on metadata:
+
+* [gpkg](https://humus.rocks/gpkg)
+* [geosapi](https://github.com/eblondel/geosapi/wiki)
+* [geometa](https://github.com/eblondel/geometa/wiki)
+
+On JS:
+
+* [JavaScript for R](https://book.javascript-for-r.com)
+* [How to write a useful htmlwidgets in R: tips and walk-through a real example](https://deanattali.com/blog/htmlwidgets-tips)
+* [Crosstalk](https://rstudio.github.io/crosstalk)
+* [Leaflet in Practice: Create webmaps using the JavaScript Leaflet library](https://bookdown.org/sammigachuhi/book-leaflet-1)
+* [Working with JavaScript Syntax in R](https://cran.r-project.org/web/packages/js/vignettes/intro.html)
+* [Introduction to V8 for R](https://cran.r-project.org/web/packages/V8/vignettes/v8_intro.html)
+
+
+### htmlwidgets
+
+* [Creating a widget](https://www.htmlwidgets.org/develop_intro.html)
+* [How to write a useful htmlwidgets in R: tips and walk-through a real example - a bit old](https://deanattali.com/blog/htmlwidgets-tips)
+* [is-it-possible-to-include-custom-css-in-htmlwidgets-for-r-and-or-leafletr](https://stackoverflow.com/questions/35720698/is-it-possible-to-include-custom-css-in-htmlwidgets-for-r-and-or-leafletr)
+* [Possible to create a leaflet map and a rendering table without shiny?](https://stackoverflow.com/questions/49938532/possible-to-create-a-leaflet-map-and-a-rendering-table-without-shiny)
+* [Server(shiny)-less dashboards with R, {htmlwidgets} and {crosstalk}](https://www.brodrigues.co/blog/2021-03-02-no_shiny_dashboard)
+
+### {crosstalk}
+
+* [Leaflet + Flexdashboard + DT + Crosstalk](https://matt-dray.github.io/earl18-crosstalk/04_leaflet-flexdash-dt-crosstalk.html)
+* [crosstalk flexdashboard](https://nicar.r-journalism.com/2020/crosstalk-flexdashboard.html) - nice step by step
+
+### {leaflet}
+
+* [Push the limits of interactive mapping in R with vector tiles](https://www.milesmcbain.com/posts/vector-tiles/)
+  * more on this [tippecanoe](https://medium.com/@kennethchambers/using-tippecanoe-tileserver-gl-and-leaflet-to-serve-scale-independent-and-really-cool-looking-751368d821c7)
+  * more along same line: [Load Quarto html map data from json for Leaflet map generated in R (javascript)](https://stackforgeeks.com/blog/load-quarto-html-map-data-from-json-for-leaflet-map-generated-in-r)
+  
+### MVT
+
+* [awesome-vector-tiles](https://github.com/mapbox/awesome-vector-tiles#servers)
+* [QgsVectorTileWriter](https://qgis.org/pyqgis/master/core/QgsVectorTileWriter.html)
+  * [pyqgis](https://qgis.org/pyqgis/master/index.html)
+
+
+### qgis 
+
+* [Generating new mbtiles using QGIS](https://docs.mapeo.app/complete-reference-guide/customization-options/custom-base-maps/creating-custom-maps/creating-mbtiles#generating-new-mbtiles-using-qgis)
+
+### Examples of 
+
+#### [How to add titles to a layer control box in a Leaflet map in R](https://heds.nz/posts/add-titles-layer-control-box-leaflet-r)
+
+```{r}
+library(leaflet)
+leaflet(quakes) %>%
+  addTiles(group = "OpenStreetMap") %>%
+  addProviderTiles(providers$CartoDB.Positron, group = "Positron") %>%
+  addCircles(~long, ~lat, group = "Show quakes") %>%
+  addLayersControl(
+    baseGroups = c("OpenStreetMap", "Positron"),
+    overlayGroups = "Show quakes",
+    options = layersControlOptions(collapsed = FALSE)) %>%
+  htmlwidgets::onRender("
+        function() {
+            $('.leaflet-control-layers-overlays').prepend('Overlay options');
+            $('.leaflet-control-layers-list').prepend('Base layer options');
+        }
+    ")
+```
+

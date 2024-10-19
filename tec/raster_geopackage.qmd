@@ -1,0 +1,18 @@
+---
+title: "raster as geopackage"
+---
+
+```{r}
+library(raster)
+library(sf)
+library(tidyverse)
+
+r <- raster::raster("~/stasi/fishydata/raster/effort06.tif")
+r <- terra::rast("~/stasi/fishydata/raster/effort06.tif")
+r |> terra::writeRaster("test.gpkg", overwrite = TRUE)
+
+
+
+
+```
+

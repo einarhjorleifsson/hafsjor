@@ -1,0 +1,48 @@
+---
+title: "Adding metadata to gpkg"
+echo: true
+---
+
+## Preamble
+
+Some trials with setting up structure for metadata. Guess {gpkg} is following [www.geopackage.org guidance on extensions - metadata](https://www.geopackage.org/guidance/extensions/metadata.html)
+
+Small print: Not at this stage trying to load any sensible stuff
+
+## Create some "new" shape
+
+```{r}
+library(gpkg)
+library(gisland)
+library(sf)
+library(tidyverse)
+
+pt <- read_lmi("LHG:grunnlina_punktar")
+pt |> glimpse()
+ln <- 
+  pt |> 
+  mutate(group = case_when(str_starts(heiti, "Grímsey") ~ "Grímsey",
+                           str_starts(heiti, "Kolb") ~ "Kolbeinsey",
+                           str_starts(heiti, "Hvalb") ~ "Hvalbakur",
+                           .default = "Meginland")) |> 
+  group_by(group) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING")
+ln |> write_sf("grunnlina.gpkg")
+```
+
+## Add the required tables to the gpkg-file
+
+```{r}
+g <- gpkg::geopackage("grunnlina.gpkg", connect = TRUE)
+gpkg_list_tables(g)
+gpkg::gpkg_add_metadata_extension(g)
+gpkg_list_tables(g)
+gpkg_table(g, "gpkg_metadata", collect = TRUE)
+gpkg_table(g, "gpkg_metadata_reference", collect = TRUE)
+```
+
+## Add some metadata content
+
+... pending
+

@@ -7,11 +7,17 @@ website:
   # favicon: "image/hafro_logo.png"
   navbar:
     right:
-      - text: Documents
+      - text: Skjöl
         menu:
-          - speed.qmd
-          - leaflet.qmd
-          - links.qmd
+          - doc/um.qmd
+      - text: Forritun
+        menu:
+          - tec/speed.qmd
+          - tec/leaflet.qmd
+          - metadata.qmd
+          - tec/gisland.qmd
+          - tec/links.qmd
+      - ramb-list.qmd # add ramb blog to the navbar
       - icon: github
         href: https://github.com/einarhjorleifsson/hafsjor
 
@@ -20,3 +26,6 @@ format:
     theme: cosmo
     css: styles.css
     toc: false
+    echo: false
+    message: false
+    warning: false

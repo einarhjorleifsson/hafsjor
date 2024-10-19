@@ -1,0 +1,78 @@
+---
+title: "ASTD vessels"
+description: "Just a little code snippet to test {rdeck} capabilities."
+date: "2024-10-17"
+categories: ["coding"]
+---
+
+Just a snippet to test the limits of [{rdeck}](https://qfes.github.io/rdeck). But definitively not something to use in productions.
+
+First we loads some libraries and get some [ASTD data](https://pame.is/ourwork/arctic-shipping/current-shipping-projects/astd), limiting our selves with some common vessel categories (other than fishing).
+
+```{r}
+library(tidyverse)
+library(arrow)
+library(sf)
+library(viridis)
+# remotes::install_github("qfes/rdeck")
+library(rdeck)
+
+d <-
+  open_dataset("~/stasi/astd/data/astd") |> 
+  filter(eez == "ISL",
+         year %in% 2023,
+         astd_cat %in% c("General cargo ships", "Cruise ships", "Container ships",
+                         "Refrigerated cargo ships", "Bulk carriers", "Oil product tankers",
+                         "Chemical tankers", "Ro-Ro cargo ships")) |>
+  select(lon, lat, astd_cat) |> 
+  collect() |> 
+  drop_na() |> 
+  select(astd_cat, lon, lat) |>
+  sf::st_as_sf(coords = c("lon", "lat"),
+               crs = 4326)
+d |> glimpse()
+```
+
+So we have some 1.7 million records. Lets put this to a test:
+
+```{r}
+m <- 
+  rdeck(
+  map_style = mapbox_dark(),
+  # set the bounds of the map based on the data
+  initial_bounds = st_bbox(d$geometry),
+  # add a x pixel buffer to each point, making it easier to hover
+  picking_radius = 2
+) %>%
+  add_scatterplot_layer(
+    name = "ASTD vessels",
+    data = d,
+    get_position = geometry,
+    get_fill_color = scale_color_category(
+      col = astd_cat,
+      palette = scales::brewer_pal("qual")
+    ),
+    # the radius of each point (default 1 metre) is scaled up
+    radius_scale = 100,
+    radius_min_pixels = 0.5,
+    # highlight dot density
+    blending_mode = "normal",
+    # interactivity
+    pickable = TRUE,
+    # stuff not really needed
+    auto_highlight = TRUE,
+    # per-category highlight colour
+    highlight_color = scale_color_category(
+      col = astd_cat,
+      palette = c("#A6CEE3", "#1F78B4", "#B2DF8A", "#33A02C",
+                  "#FB9A99", "#E31A1C", "#FDBF6F", "#FF7F00"),
+      legend = FALSE
+    ),
+    tooltip = c(astd_cat)
+  )
+htmlwidgets::saveWidget(m, "/net/hafri.hafro.is/export/home/hafri/einarhj/public_html/astd_cat.html")
+system("chmod -R a+rx /net/hafri.hafro.is/export/home/hafri/einarhj/public_html/astd_cat*")
+m
+```
+
+A full sceen version is nicer to roam around, check [here](https://heima.hafro.is/~einarhj/astd_cat.html)

@@ -1,0 +1,72 @@
+---
+title: "leflet overview"
+---
+
+
+```{r}
+library(leaflet)
+# remotes::install_github("trafficonese/leaflet.extras")
+library(leaflet.extras)
+# remotes::install_github("trafficonese/leaflet.extras2")
+library(leaflet.extras2)
+```
+
+## addGroupedLayerControl
+
+```{r}
+leaflet() |> 
+  addTiles() |> 
+  setView(-19, 65, zoom = 5) |>
+  addGroupedLayersControl(
+    baseGroups = c("Hnöttur", "Botnlag"),
+    overlayGroups = list(
+      "Veiðar" = c("Fish", "Shrimp", "Nephrops", "Line"),
+      "Dýr" = c("Botndýr", "Loftdýr"),
+      "Lög" = c("12 mílur", "EEZ"),
+      "Reglugerðir" = c("Surtsey", "Steinahóll")
+    ),
+    position = "topleft",
+    options = groupedLayersControlOptions(
+      exclusiveGroups = c("Veiðar"),  # Variables for radio buttons
+      groupCheckboxes = TRUE,         # Variables for check boxes
+      groupsCollapsable = TRUE,       # Seems to be just either T or F
+      groupsExpandedClass = "leaflet-control-layers-group-collapse-default",
+      groupsCollapsedClass = "leaflet-control-layers-group-expand-default",
+      sortLayers = FALSE,
+      sortGroups = FALSE,
+      sortBaseLayers = FALSE,
+      collapsed = FALSE,
+      autoZIndex = TRUE))
+#, exclusiveGroups = c("Shrimp trawl", "Nephrops trawl", "Longline")
+
+```
+
+## addFullScreenControl
+
+```{r}
+leaflet() |> 
+  addTiles()  |> 
+  setView(-19, 65, zoom = 7) |>
+  addFullscreenControl()
+```
+
+```{r}
+leaflet() %>%
+  addTiles() %>%
+  setView(11, 51, 6) %>%
+  addWMSTiles(
+    baseUrl = "https://www.wms.nrw.de/wms/unfallatlas?request=GetMap",
+    layers = c("Unfallorte", "Personenschaden_5000", "Personenschaden_250"),
+    options = WMSTileOptions(format = "image/png", transparent = TRUE)
+  ) %>%
+  addWMSLegend(
+    title = "Personenschaden_5000", titleStyle = "font-size:1em; font-weight:800",
+    uri = paste0(
+      "https://www.wms.nrw.de/wms/unfallatlas?request=",
+      "GetLegendGraphic&version=1.3.0&",
+      "format=image/png&layer=Personenschaden_5000"
+    )
+  )
+```
+
+

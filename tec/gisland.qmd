@@ -1,0 +1,1786 @@
+---
+title: "gisland"
+eval: false
+---
+
+```{r, echo = FALSE}
+# https://r.geocompx.org/read-write.html
+SAVE <- FALSE
+gpkg.path <- "/net/hafgola/var/ftp/pub/data/gpkg/"
+
+library(lubridate)
+library(sf)
+library(leaflet)
+library(mapview)
+library(geosphere)
+library(tidyverse)
+library(ggrepel)
+GC <- geo_convert <- gisland::geo_convert
+st_split_fun <- function(po, li, dist = 5000) {
+  
+  # just so we can revert back to the original crs for the return object
+  crs.po <- sf::st_crs(po)
+  crs.li <- sf::st_crs(li)
+  
+  li.tb <-
+    li %>%
+    sf::st_transform(crs = 4326) %>%
+    sf::st_coordinates() %>%
+    tidyr::as_tibble()
+  
+  # start point "extention" by bearing
+  li.start <- li.tb %>% head(n = 2)
+  # bearing from the second first point to the first point - i.e. inverse
+  bearing.start <-
+    geosphere::bearingRhumb(c(li.start$X[2], li.start$Y[2]), c(li.start$X[1], li.start$Y[1]))
+  pt.start <-
+    geosphere::destPointRhumb(c(li.start$X[1], li.start$Y[1]), b = bearing.start, d = dist) %>%
+    tidyr::as_tibble() %>%
+    dplyr::rename(X = lon, Y = lat)
+  
+  # end point "extentions" by bearing
+  li.end <- li.tb %>% tail(n = 2)
+  bearing.end <-
+    geosphere::bearingRhumb(c(li.end$X[1], li.end$Y[1]), c(li.end$X[2], li.end$Y[2]))
+  pt.end <-
+    geosphere::destPointRhumb(c(li.end$X[2], li.end$Y[2]), b = bearing.end, d = dist) %>%
+    tidyr::as_tibble() %>%
+    dplyr::rename(X = lon, Y = lat)
+  
+  li.expanded <-
+    dplyr::bind_rows(pt.start,
+                     li.tb,
+                     pt.end) %>%
+    sf::st_as_sf(coords = c("X", "Y"),
+                 crs = 4326) %>%
+    sf::st_transform(crs = crs.li) %>%
+    dplyr::summarise(do_union = FALSE) %>%
+    sf::st_cast("LINESTRING") %>%
+    sf::st_geometry()
+  
+  
+  lwgeom::st_split(po, li.expanded) %>%
+    sf::st_collection_extract(c("POLYGON")) %>%
+    sf::st_as_sf() %>%
+    dplyr::mutate(area = st_area(.)) %>%
+    dplyr::filter(area != max(area)) %>%
+    # combine polygons in case there is more than one - like 2 "sub-fjords"
+    sf::st_union()
+}
+```
+
+
+
+```{r}
+# external data ----------------------------------------------------------------
+biceland <- 
+  gisland::read_strandlinur()
+biceland <- 
+  biceland |> 
+  select(eyjarsker) %>% 
+  # to calculate area
+  #st_transform(crs = 3395) %>% 
+  mutate(area = st_area(.)) %>% 
+  arrange(desc(area)) %>% 
+  #st_transform(crs = 4326) %>% 
+  mutate(id = 1:n(),
+         sker = ifelse(eyjarsker == 2, TRUE, FALSE)) %>% 
+  select(id, sker, area)
+if(SAVE) {
+  write_sf(biceland, paste0(gpkg.path, "biceland.gpkg"), append = FALSE)
+}
+iceland <- 
+  biceland %>% 
+  filter(!sker) %>% 
+  select(-sker)
+if(SAVE) {
+  write_sf(iceland, paste0(gpkg.path, "iceland.gpkg"), append = FALSE)
+}
+mainland <-
+  biceland %>% 
+  filter(area == max(area))
+if(SAVE) {
+  write_sf(mainland, paste0(gpkg.path, "mainland.gpkg"), append = FALSE)
+}
+# föll -------------------------------------------------------------------------
+pretty_coords <- function(x, nw = "N") {
+  paste0(str_sub(x,1,2),"°",str_sub(x,3,4),"'",str_sub(x,5)," ", nw)
+}
+```
+
+## Fororð
+
+Skjalið inniheldur R-scriptur að baki myndun fláka er varðar ýmis svæði tengt fiskveiðum. Afurðin (ásamt öðrum gögnum) er að finna á [FTP heimasíðu Hafró, undirsvæði pub/data/shapes](ftp://ftp.hafro.is/pub/data/shapes):
+
+```{r}
+fs::dir_tree("/net/hafgola/var/ftp/pub/data/gpkg")
+```
+
+Hægt er að nálgast gögnin beint úr R, dæmi:
+
+```{r}
+fridur <- read_sf("ftp://ftp.hafro.is/pub/data/gpkg/rgl2016-0942_korall.gpkg")
+mapview(fridur, zcol = "nafn")
+```
+
+## LÖG
+
+### Lög um landhelgi, aðlægt belti, efnahagslögsögu og landgrunn
+
+sjá: [https://www.althingi.is/lagas/nuna/1979041.html)(https://www.althingi.is/lagas/nuna/1979041.html)
+
+#### I. Landhelgi
+
+***1. gr.** Landhelgi Íslands skal afmörkuð af línu sem alls staðar er 12 sjómílur frá grunnlínu sem dregin er milli eftirtalinna staða:*
+
+```{r}
+GP <- 
+  read_csv("external/log/grunnpunktar.csv",
+           col_types = c("innc"))
+GP %>% 
+  mutate(breidd = pretty_coords(breidd),
+         lengd = pretty_coords(lengd, "V")) %>% 
+  knitr::kable()
+```
+
+*Landhelgin skal auk þess afmörkuð af línu sem alls staðar er 12 sjómílur frá stórstraumsfjöruborði Kolbeinseyjar (67°08'59,57"N, 18°40'58,70"V), Hvalbaks (64°35'45,42"N, 13°16'37,71"V) og ystu annesjum og skerjum Grímseyjar (66°34'03,27"N, 18°01'18,74"V; 66°33'33,72"N, 18°00'03,65"V; 66°32'45,09"N, 17°58'38,74"V; 66°32'00,88"N, 17°58'40,37"V; 66°31'29,42"N, 17°58'45,61"V; 66°31'36,26"N, 17°59'24,84"V; 66°31'40,69"N, 17°59'43,81"V; 66°32'15,60"N, 18°01'17,25"V; 66°32'21,61"N, 18°01'22,93"V; 66°32'33,57"N, 18°01'34,45"V; 66°33'04,77"N, 18°01'48,60"V; 66°34'01,34"N, 18°01'28,13"V).*
+
+```{r}
+# Grunnpunktar: A tibble -------------------------------------------------------
+GP.tb <- 
+  # close the loop
+  bind_rows(GP,
+            tibble(gp = NA,
+                   nafn = GP$nafn[1],
+                   breidd = GP$breidd[1],
+                   lengd  = GP$lengd[1])) %>% 
+  mutate(region = "meginland")
+GP.tb.sker <- 
+  tribble(~nafn, ~lengd, ~breidd,
+          'Kolbeinsey', 184058.70, 670859.57,
+          'Hvalbakur',  131637.71, 643545.42) %>% 
+  mutate(region = tolower(nafn))
+GP.tb.grimsey <- 
+  read_csv("external/grimsey.cvs")
+GP.tb.grimsey <-
+  GP.tb.grimsey %>% 
+  bind_rows(GP.tb.grimsey,
+            tibble(breidd = GP.tb.grimsey$breidd[1],
+                   lengd = GP.tb.grimsey$lengd[1])) %>% 
+  mutate(nafn = "Grímsey",
+         region = "grimsey")
+GP.pt <- 
+  bind_rows(GP.tb, GP.tb.sker, GP.tb.grimsey) %>% 
+  mutate(ref = "Lög 1979_0041",
+         link = "https://www.althingi.is/lagas/nuna/1979041.html")
+if(SAVE) {
+  GP.pt %>% write_csv("/net/hafgola/var/ftp/pub/data/csv/grunnpunktar.csv")
+}
+# read from scatch
+GP.pt <-read_csv("ftp://ftp.hafro.is/pub/data/csv/grunnpunktar.csv")
+
+GP.pt <- 
+  GP.pt %>% 
+  mutate(lon = -GC(lengd),
+         lat =  GC(breidd)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326,
+           remove = FALSE)
+if(SAVE) {
+  GP.pt %>%
+    st_write(paste0(gpkg.path, "grunnpunktar.gpkg"), append = FALSE)
+}
+GP.po <- 
+  bind_rows(GP.pt %>% 
+              # not sker because they are just points
+              filter(region %in% c("meginland", "grimsey")) %>% 
+              group_by(region) %>% 
+              summarise(do_union = FALSE) %>% 
+              st_cast("LINESTRING") %>% 
+              st_cast("POLYGON"),
+            GP.pt %>% 
+              filter(region %in% c("kolbeinsey", "hvalbakur")) %>% 
+              st_transform(crs = 9040) %>% 
+              st_buffer(dist = 200) %>% 
+              st_transform(crs = 4326) %>% 
+              select(region))
+
+if(SAVE) {
+ GP.po %>%
+   st_cast("LINESTRING") %>%
+   st_write(paste0(gpkg.path, "grunnlina.gpkg"), append = FALSE)
+}
+
+landhelgi <- 
+  GP.po %>% 
+  st_transform(crs = 9040) %>% 
+  st_buffer(dist = 12 * 1852) %>% 
+  st_union() %>% 
+  st_transform(crs = 4326) %>% 
+  st_sf() %>% 
+  mutate(name = "Landhelgi",
+         ref = "Lög 1979_0041",
+         link = "https://www.althingi.is/lagas/nuna/1979041.html") %>% 
+  select(name, ref, link)
+
+if(SAVE) {
+ landhelgi %>%
+    st_write(paste0(gpkg.path, "landhelgi.gpkg"), append = FALSE)
+}
+```
+
+```{r, echo = FALSE, eval = FALSE}
+# Ekki lengur notað (ætti samt að vera fyrir viðmiðunarpunkta, skv.
+#  orðanna hljóðan í reglugerð
+grimsey.bb <- 
+  tibble(x =  c(-19,-17.5,-17.5,-19,-19),
+         y = c(66.4,66.4,67,67,66.4)) %>% 
+  st_as_sf(coords = c("x", "y"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("POLYGON")
+grimsey2.4326 <- 
+  st_crop(biceland, grimsey.bb) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("MULTIPOLYGON") %>% 
+  mutate(area = "Grímsey") %>% 
+  rename(geometry = geom)
+```
+
+#### II. Efnahagslögsagan
+
+***3. gr.** Efnahagslögsaga Íslands er svæði utan landhelgi sem afmarkast af línu sem alls staðar er 200 sjómílur frá grunnlínum landhelginnar, sbr. þó 7. gr.*
+
+***7. gr.** Afmörkun efnahagslögsögu og landgrunns milli Íslands og annarra landa skal eftir atvikum ákveðin með samningum við hlutaðeigandi ríki og skulu slíkir samningar háðir samþykki Alþingis.
+Þar til annað verður ákveðið skulu efnahagslögsaga og landgrunn Íslands miðuð við 200 sjómílur frá grunnlínum landhelginnar að því undanskildu þó að þar sem skemmra er en 400 sjómílur milli grunnlína Færeyja og Grænlands annars vegar og Íslands hins vegar skulu efnahagslögsaga og landgrunn Íslands afmarkast af miðlínu.*
+
+```{r}
+# eez midlinur
+midlinur <- 
+  read_csv("ftp://ftp.hafro.is/pub/data/csv/midlinur_eez.csv",
+           col_types = c("cnncc")) %>%
+  mutate(lon = -GC(lengd),
+         lat =  GC(breidd))
+# Miðlína Ísland-Færeyar -------------------------------------------------------
+fo <- 
+  midlinur %>% 
+  filter(region == "faroe") %>% 
+  mutate(id2 = 1:n()) %>% 
+  arrange(-id2)
+# Búa til fláka
+fo.pol <-
+  bind_rows(fo,
+            tibble(lon = c(0, 0, fo$lon[1], fo$lon[1]),
+                   lat = c(fo$lat[10], 60, 60, fo$lat[1]))) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON")
+# Miðlína Ísland-Grænland-JanMayen ----------------------------------------------
+grjm <-
+  midlinur %>% 
+  filter(region != "faroe") %>% 
+  arrange(-lon)
+grjm.pol <-
+  bind_rows(grjm,
+            tibble(lon = c(-40, -40, grjm$lon[1], grjm$lon[1]),
+                   lat = c(grjm$lat[19], 71, 71, grjm$lat[1]))) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON")
+
+eez.raw <- 
+  GP.po %>% 
+  st_transform(crs = 9040) %>% 
+  st_buffer(dist = 200 * 1852) %>% 
+  st_union() %>% 
+  st_transform(crs = 4326)
+
+# NOTE: One of the jm-points falls outside the 200 miles
+eez <- 
+  st_difference(eez.raw %>% st_transform(crs = 9040),
+                fo.pol %>% st_transform(crs = 9040)) %>% 
+  st_difference(grjm.pol %>% st_transform(crs = 9040)) %>% 
+  st_transform(crs = 4326) %>% 
+  st_sf() %>% 
+  mutate(name = "EEZ",
+         ref = "Lög 1979_0041",
+         link = "https://www.althingi.is/lagas/nuna/1979041.html") %>% 
+  select(name, ref, link)
+if(SAVE) {
+ eez %>%
+    st_write(paste0(gpkg.path, "eez.gpkg"), append = FALSE)
+}
+```
+
+```{r}
+p <- 
+  ggplot() +
+  geom_sf(data = iceland)
+p +
+  geom_sf(data = eez, alpha = 0.3, fill = "red") +
+  geom_sf(data = landhelgi, alpha = 0.3, fill = "red")
+```
+
+### Lög um veiðar í fiskveiðilandhelgi Íslands
+
+**TODO**: Check all calulations
+
+**TODO**: Check boundaries of C1 vs D1 and C4 vs D3. Caused by the difference of destPointRhumb vs st_buffer
+
+sjá: [http://www.althingi.is/lagas/nuna/1997079.html](http://www.althingi.is/lagas/nuna/1997079.html)
+
+**5. gr.**
+
+Íslenskum skipum eru bannaðar veiðar með botnvörpu, flotvörpu og dragnót í fiskveiðilandhelgi Íslands nema á þeim veiðisvæðum og veiðitímum sem tilgreind eru í þessari grein, enda undanþiggi ráðherra ekki tiltekin svæði slíkum veiðum. Þegar rætt er um **viðmiðunarlínu** er átt við línu sem dregin er umhverfis landið á milli eftirtalinna staða: 
+
+```{r}
+VP <- 
+  read_csv("external/vidmidunarpunktar.csv",
+           col_types = c("innci"))
+if(SAVE) {
+  VP %>% write_csv("/net/hafgola/var/ftp/pub/data/csv/vidmidunarpunktar.csv")
+}
+VP %>% 
+  mutate(breidd = pretty_coords(breidd),
+         lengd = pretty_coords(lengd, "V")) %>% 
+  knitr::kable()
+```
+
+```{r}
+VP.pt <- 
+  # close the loop
+  bind_rows(VP,
+            tibble(vp = NA,
+                   nafn = VP$nafn[1],
+                   breidd = VP$breidd[1],
+                   lengd  = VP$lengd[1])) %>% 
+  mutate(region = "meginland",
+         lon = -GC(lengd),
+         lat =  GC(breidd)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326,
+           remove = FALSE)
+if(SAVE) {
+  VP.pt %>% 
+    write_sf(paste0(gpkg.path, "vidmidunarpunktar.gpkg"), append = FALSE)
+}
+
+VP.ls <- 
+  VP.pt %>% 
+  # Grunnpunktum breytt yfir í "grunnlínu" 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING")
+if(SAVE) {
+  VP.ls %>% write_sf(paste0(gpkg.path, "vidmidunarlina.gpkg"))
+}
+
+VP.po <- 
+  VP.ls %>% 
+  st_cast("POLYGON")
+
+VP.sfc <-
+  VP.po %>% 
+  st_geometry()
+
+outside_x_miles <- function(miles = 12, VP = VP.sfc,  EEZ = eez.sfc) {
+  VP <- 
+    VP %>% 
+    st_transform(crs = 9040) %>% 
+    st_buffer(dist = miles * 1852) %>% 
+    st_union() %>% 
+    st_transform(crs = 4326)
+  st_difference(EEZ, VP)
+}
+
+dest_point <- function(pt, b = 0, d = 1852 * 400) {
+  destPointRhumb(pt,
+                 b = b,
+                 d = d) %>% 
+    return()
+}
+
+coords_vp <- function(pt, VP = VP.pt) {
+  VP %>% 
+    filter(vp %in% pt) %>% 
+    st_coordinates()
+}
+
+lh <- function(p1, p2, b1, b2, VP = VP.pt) {
+  rbind(VP %>% 
+          filter(vp %in% p1:p2) %>% 
+          arrange(-vp) %>% 
+          st_coordinates(),
+        destPointRhumb(coords_vp(p1), b1, d = 1852 * 400),
+        destPointRhumb(coords_vp(p2), b2, d = 1852 * 400),
+        VP %>% 
+          filter(vp %in% p2) %>% 
+          st_coordinates()) %>% 
+    as_tibble() %>%
+    st_as_sf(coords = c("X", "Y"),
+             crs = 4326) %>% 
+    summarise(do_union = FALSE) %>% 
+    st_cast("LINESTRING") %>% 
+    st_cast("POLYGON") 
+}
+eez.sfc <- st_geometry(eez)
+miles3 <- 
+  mainland %>% 
+  st_geometry() %>% 
+  st_transform(crs = 9040) %>% 
+  st_buffer(dist = 3 * 1852) %>% 
+  st_transform(crs = 4326)
+miles3 <- 
+  st_difference(eez.sfc, miles3)
+
+miles4 <- 
+  mainland %>% 
+  st_geometry() %>% 
+  st_transform(crs = 9040) %>% 
+  st_buffer(dist = 4 * 1852) %>% 
+  st_transform(crs = 4326)
+miles4 <- 
+  st_difference(eez.sfc, miles4)
+```
+
+Hér á eftir eru tilgreind þau svæði og tímar þar sem einstökum flokkum fiskiskipa, sbr. 2. mgr. þessarar greinar, er heimilt að stunda veiðar með botnvörpu, flotvörpu og dragnót: 
+
+#### A. Norðurland
+
+*Allir flokkar*:
+
+* A.1. Allt árið frá línu réttvísandi norður frá Horni (vms. 1) að línu réttvísandi norðaustur frá Langanesi (vms. 10), utan línu sem dregin er 12 sjómílur utan við viðmiðunarlínu.
+* A.2. Allt árið utan línu sem dregin er í 12 sjómílna fjarlægð frá fjörumarki Grímseyjar.
+* A.3. Allt árið utan línu sem dregin er í 12 sjómílna fjarlægð frá fjörumarki Kolbeinseyjar (67°08'80 N – 18°40'60 V).
+
+```{r}
+# question here if the base crs should not be 9040 and then converted to
+#  crs 4326 in the end
+A <- 
+  lh(p1 = 1, p2 = 10, b1 = 0, b2 = 45, VP = VP.pt) %>% 
+  st_intersection(outside_x_miles(miles = 12)) %>% 
+  st_difference(GP.po %>% 
+                  filter(region %in% c("grimsey")) %>% 
+                  st_transform(crs = 9040) %>% 
+                  st_buffer(dist = 1852 * 12) %>% 
+                  st_transform(crs = 4326) %>% 
+                  st_geometry()) %>% 
+  st_difference(GP.po %>% 
+                  filter(region %in% c("kolbeinsey")) %>% 
+                  st_transform(crs = 9040) %>% 
+                  st_buffer(dist = 1852 * 12) %>% 
+                  st_transform(crs = 4326) %>% 
+                  st_geometry()) %>% 
+  mutate(name = "A",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = A, fill = "pink")
+```
+
+#### B. Austurland
+
+*Allir flokkar*:
+
+* B.1. Allt árið frá línu réttvísandi norðaustur frá Langanesi (vms. 10) að línu réttvísandi austur frá Hvítingum (vms. 19), utan línu sem dregin er 12 sjómílur utan viðmiðunarlínu.
+* B.2. Allt árið utan línu sem dregin er í 5 sjómílna fjarlægð frá fjörumarki Hvalbaks (64°35'80 N – 13°16'60 V). 
+
+```{r}
+# Includes B2
+B1 <- 
+  lh(p1 = 10, p2 = 19, b1 = 45, b2 = 90, VP = VP.pt) %>% 
+  st_intersection(outside_x_miles(miles = 12)) %>% 
+  st_difference(GP.po %>% 
+                  filter(region == "hvalbakur") %>% 
+                  st_transform(crs = 9040) %>% 
+                  st_buffer(dist = 1852 * 5) %>% 
+                  st_transform(crs = 4326) %>% 
+                  st_geometry()) %>% 
+  mutate(name = "B1",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = B1, fill = "pink")
+```
+
+*Flokkar 2 og 3*:
+
+* B.3. Allt árið utan línu sem dregin er 6 sjómílur utan viðmiðunarlínu milli lína réttvísandi norðaustur frá Langanesi (vms. 10) og réttvísandi austur frá Glettinganesi (vms. 13). 
+
+```{r}
+B3 <- 
+  lh(p1 = 10, p2 = 13, b1 = 45, b2 = 90) %>% 
+  st_intersection(outside_x_miles(miles = 6)) %>% 
+  mutate(name = "B3",
+         s1 = FALSE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = B3, fill = "pink")
+```
+
+
+#### C. Suðausturland
+
+*Allir flokkar*:
+
+* C.1. Allt árið frá línu réttvísandi austur frá Hvítingum (vms. 19) að línu réttvísandi suður frá Lundadrangi (vms. 28), utan línu sem dregin er 12 sjómílur utan viðmiðunarlínu. 
+
+```{r}
+C1 <- 
+  lh(p1 = 19, p2 = 28, b1 = 90, b2 = 180) %>% 
+  st_intersection(outside_x_miles(miles = 12)) %>% 
+  mutate(name = "C1",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = C1, fill = "pink")
+```
+
+* C.2. Tímabilið 1. maí – 31. desember frá línu réttvísandi austur frá Hvítingum (vms. 19) að línu réttvísandi suður frá Hvalnesi (64°24'10 N – 14°32'50 V), utan línu sem dregin er 4 sjómílur utan viðmiðunarlínu.
+
+```{r}
+C2 <-
+  rbind(coords_vp(19),
+        destPointRhumb(coords_vp(19), b = 90, d = 1852 * 400),
+        destPointRhumb(c(GC(-143250), GC(642410)), b = 180, d = 1852 * 400),
+        c(GC(-143250), GC(642410)),
+        coords_vp(19)) %>% 
+  as_tibble() %>% 
+  st_as_sf(coords = c("X", "Y"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_intersection(outside_x_miles(miles = 4)) %>% 
+  mutate(name = "C2",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = C2, fill = "pink")
+```
+
+* C.3. Tímabilið 1. maí – 31. janúar á svæði milli lína réttvísandi austur frá Hvítingum (vms. 19) og réttvísandi suður frá Ingólfshöfða (vms. 22), utan línu sem dregin er 9 sjómílur utan viðmiðunarlínu.
+
+```{r}
+C3 <- 
+  lh(p1 = 19, p2 = 22, b1 = 90, b2 = 180) %>% 
+  st_intersection(outside_x_miles(miles = 9)) %>% 
+  mutate(name = "C3",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = C3, fill = "pink")
+```
+
+* C.4. Tímabilið 15. september – 31. janúar á svæði milli lína réttvísandi suður frá Ingólfshöfða (vms. 22) og réttvísandi suður frá Lundadrangi (vms. 28), utan línu sem dregin er 4 sjómílur utan viðmiðunarlínu. 
+
+```{r}
+C4 <- 
+  lh(p1 = 22, p2 = 28, b1 = 180, b2 = 180) %>% 
+  st_intersection(outside_x_miles(miles = 4)) %>% 
+  mutate(name = "C4",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = C4, fill = "pink")
+```
+
+*Flokkar 2 og 3*:
+
+* C.5. Allt árið utan línu sem dregin er í 4 sjómílna fjarlægð frá fjörumarki meginlandsins frá línu austur frá Hvítingum (vms. 19) að 18°00'00 V.
+* Á svæði milli línu sem dregin er réttvísandi [suður frá Stokksnesi (vms. 20)] 4) og að 15°45'00 V er þó ekki heimilt að stunda veiðar innan 6 sjómílna frá landi tímabilið 1. maí – 30. september.
+
+```{r}
+bb1 <-
+  st_bbox(c(xmax = coords_vp(19)[1],
+            xmin = -18,
+            ymin = 40,
+            ymax = 65),
+          crs = 4326)
+C5 <-
+  st_crop(miles4, bb1) %>% 
+  st_sf() %>% 
+  mutate(name = "C5",
+         s1 = FALSE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = C5, fill = "pink")
+```
+
+* C.6. Allt árið utan línu sem dregin er 4 sjómílur utan viðmiðunarlínu frá 18°00'00 V að línu réttvísandi suður frá Lundadrangi (vms. 28).
+
+```{r}
+bb2 <-
+  st_bbox(c(xmax = -18,
+            xmin = coords_vp(28)[1],
+            ymin = 40,
+            ymax = 65),
+          crs = 4326)
+C6 <-
+  st_crop(miles4, bb2) %>% 
+  st_sf() %>% 
+  mutate(name = "C6",
+         s1 = FALSE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = C6, fill = "pink")
+```
+
+*Flokkur 3*:
+
+* C.7. Allt árið utan línu sem dregin er í 3 sjómílna fjarlægð frá fjörumarki meginlandsins frá línu réttvísandi austur frá Hvítingum (vms. 19) að 18°00'00 V. 
+
+```{r}
+C7 <- 
+  st_crop(miles3, bb1) %>% 
+  st_sf() %>% 
+  mutate(name = "C7",
+         s1 = FALSE, s2 = FALSE, s3 = TRUE)
+p + geom_sf(data = C7, fill = "pink")
+```
+
+* C.8. Allt árið utan línu sem dregin er í 3 sjómílna fjarlægð frá fjörumarki meginlandsins frá 18°00'00 V að línu réttvísandi suður af Lundadrangi (vms. 28).
+
+```{r}
+C8 <- 
+  st_crop(miles3, bb2) %>% 
+  st_sf() %>% 
+  mutate(name = "C8",
+         s1 = FALSE, s2 = FALSE, s3 = TRUE)
+p + geom_sf(data = C8, fill = "pink")
+```
+
+#### D. Suðurland.
+
+*Allir flokkar*:
+
+* D.1. Allt árið utan línu sem dregin er úr punkti í 12 sjómílna fjarlægð réttvísandi suður frá Lundadrangi (vms. 28) í punkt 63°08'00 N – 19°57'00 V og þaðan í 4 sjómílna fjarlægð réttvísandi suður frá Surtsey (63°17'60 N – 20°36'30 V). 
+
+```{r} 
+D1 <- 
+  rbind(
+    # 12 sjómílna fjarlægð réttvísandi suður frá Lundadrangi (vms. 28)
+    destPointRhumb(coords_vp(28), b = 180, d = 12 * 1852),
+    # í punkt 63°08'00 N – 19°57'00 V
+    c(GC(-195700), GC(630800)),
+    # 4 sjómílna fjarlægð réttvísandi suður frá Surtsey (63°17'60 N – 20°36'30 V)
+    destPointRhumb(c(GC(-203630), GC(631760)), b = 180, d = 4 * 1852),
+    # close the loop
+    destPointRhumb(c(GC(-203630), GC(631760)), b = 180, d = 400 * 1852),
+    destPointRhumb(coords_vp(28), b = 180, d = 220 * 1852),
+    destPointRhumb(coords_vp(28), b = 180, d = 12 * 1852)) %>% 
+  as_tibble() %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_intersection(eez.sfc) %>%
+  st_sf() %>% 
+  mutate(name = "D1",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = D1, fill = "pink")
+```
+
+* D.2. Allt árið utan línu sem dregin er úr punkti í 4 sjómílna fjarlægð réttvísandi suður frá Surtsey í punkt í 5 sjómílna fjarlægð réttvísandi suður frá Geirfugladrangi [(63°40'7 N–23°17'1 V)].
+
+```{r}
+D2 <- 
+  rbind(
+    # 4 sjómílna fjarlægð réttvísandi suður frá Surtsey (63°17'60 N – 20°36'30 V)
+    destPointRhumb(c(GC(-203630), GC(631760)), b = 180, d = 4 * 1852),
+    # 5 sjómílna fjarlægð réttvísandi suður frá Geirfugladrangi [(63°40'7 N–23°17'1 V)]
+    destPointRhumb(c(GC(-231710), GC(634070)), b = 180, d = 5 * 1852),
+    # close the loop
+    destPointRhumb(c(GC(-231710), GC(634070)), b = 180, d = 400 * 1852),
+    destPointRhumb(c(GC(-203630), GC(631760)), b = 180, d = 400 * 1852),
+    destPointRhumb(c(GC(-203630), GC(631760)), b = 180, d = 4 * 1852)) %>% 
+  as_tibble() %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_intersection(eez.sfc) %>% 
+  st_sf() %>% 
+  mutate(name = "D2",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = D2, fill = "pink")
+```
+
+* D.3. Tímabilið 1. ágúst – 31. desember utan línu sem dregin er úr punkti í 4 sjómílna fjarlægð réttvísandi suður frá Lundadrangi (vms. 28) í punkt í 4 sjómílna fjarlægð réttvísandi suður frá Surtsey.
+
+```{r}
+D3 <- 
+  rbind(destPointRhumb(coords_vp(28), b = 180, d = 4 * 1852),
+        destPointRhumb(c(GC(-203630), GC(631760)), b = 180, d = 4 * 1852),
+        # close the loop
+        destPointRhumb(c(GC(-203630), GC(631760)), b = 180, d = 400 * 1852),
+        destPointRhumb(coords_vp(28), b = 180, d = 400 * 1852),
+        destPointRhumb(coords_vp(28), b = 180, d = 4 * 1852)) %>% 
+  as_tibble() %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_intersection(eez.sfc) %>% 
+  st_sf() %>% 
+  mutate(name = "D3",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = D3, fill = "pink")
+```
+
+*Flokkar 2 og 3*:
+
+* D.4. Allt árið utan línu sem dregin er úr punkti í 4 sjómílna fjarlægð réttvísandi suður frá Lundadrangi (vms. 28) í punkt í 4 sjómílna fjarlægð réttvísandi suður frá Surtsey. 
+
+```{r}
+D4 <- 
+  D3 %>% 
+  mutate(name = "D4",
+         s1 = FALSE)
+p + geom_sf(data = D4, fill = "pink")
+```
+
+* D.5. Tímabilið 16. maí – 31. desember utan línu sem dregin er 4 sjómílur utan viðmiðunarlínu frá línu réttvísandi suður úr Lundadrangi (vms. 28) að línu [réttvísandi suðvestur frá Reykjanesaukavita (vms. 34)]. 
+
+```{r}
+D5 <-
+  lh(p1 = 28, p2 = 34, b1 = 180, b2 = 225) %>% 
+  st_intersection(outside_x_miles(miles = 4)) %>% 
+  mutate(name = "D5",
+         s1 = FALSE, s2 = TRUE, s3 = TRUE)
+
+# NOTE: Thought NE-point was supposed to be the same here -->
+# mapview(list(D4, D5))
+p + geom_sf(data = D5, fill = "pink")
+```
+
+*Flokkur 3*:
+
+* D.6. Allt árið utan línu sem dregin er í 3 sjómílna fjarlægð frá fjörumarki meginlandsins frá línu réttvísandi suður frá Lundadrangi (vms. 28) að línu réttvísandi suðvestur frá Reykjanesaukavita. 
+
+```{r}
+bb1 <-
+  st_bbox(c(xmax = coords_vp(28)[1],
+            xmin = coords_vp(34)[1],
+            ymin = 40,
+            ymax = coords_vp(34)[2]),
+          crs = 4326)
+D6 <-
+  st_crop(miles3, bb1) %>%
+  st_sf() %>% 
+  mutate(name = "D6",
+         s1 = FALSE, s2 = FALSE, s3 = TRUE)
+p + geom_sf(data = D6, fill = "pink")
+```
+
+#### E. Reykjanes- og Faxaflóasvæði.
+
+*Allir flokkar*:
+
+* E.1. [Allt árið úr punkti í 5 sjómílna fjarlægð réttvísandi suður frá Geirfugladrangi og utan línu í 5 sjómílna fjarlægð frá Geirfugladrangi í punkt 64°43'70 N–24°12'00 V.]
+
+```{r}
+#   NOTE: Assume that west of unnamed point, but as written there is no bearing
+geirfugladrangi.landhelgi.5sjomilur <- 
+  tibble(lon = GC( -231710),
+         lat = GC( 634070)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  st_transform(crs = 9040) %>% 
+  st_buffer(dist = 5 * 1852,
+            nQuadSeg = 360) %>% 
+  st_transform(crs = 4326)
+E1 <- 
+  rbind(
+    c(GC(-231710), GC(634070)),
+    destPointRhumb(c(GC(-231710), GC(634070)), b = 180, d = 400 * 1852),
+    destPointRhumb(c(GC(-241200), GC(644370)), b = 270, d = 400 * 1852),
+    c(GC(-241200), GC(644370)),
+    c(GC(-231710), GC(634070))) %>% 
+  as_tibble() %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_intersection(eez.sfc) %>% 
+  st_difference(geirfugladrangi.landhelgi.5sjomilur) %>% 
+  mutate(name = "E1",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = E1, fill = "pink")
+```
+
+* E.2. Tímabilið 1. nóvember – 31. desember utan línu sem dregin er í 12 sjómílna fjarlægð frá viðmiðunarlínu á svæði sem að sunnan markast af línu dreginni réttvísandi suður frá Reykjanesaukavita (vms. 34) og að vestan af línu sem dregin er réttvísandi vestur frá Reykjanesaukavita. 
+
+```{r}
+E2 <- 
+  lh(p1 = 34, p2 = 34, b1 = 180, b2 = 270) %>% 
+  st_intersection(outside_x_miles(miles = 12)) %>% 
+  mutate(name = "E2",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = E2, fill = "pink")
+```
+
+*Flokkar 2 og 3*:
+
+* E.3. Allt árið utan línu sem dregin er 4 sjómílur utan viðmiðunarlínu frá línu réttvísandi suðvestur frá Reykjanesaukavita (vms. 34) að línu réttvísandi vestur frá Malarrifi (vms. 38). 
+
+```{r}
+E3 <- 
+  lh(p1 = 34, p2 = 38, b1 = 180, b2 = 270) %>% 
+  st_intersection(outside_x_miles(miles = 4)) %>% 
+  mutate(name = "E3",
+         s1 = FALSE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = E3, fill = "pink")
+```
+
+#### F. Breiðafjörður.
+
+*Allir flokkar*:
+
+* F.1. Allt árið utan línu sem dregin er frá punkti 64°43'70 N – 24°12'00 V í punkt 64°43'70 N – 24°26'00 V og þaðan í punkt í 12 sjómílna fjarlægð réttvísandi vestur frá Bjargtöngum (vms. 43). 
+```{r}
+#    NOTE: These two points mentioned do not really make sense
+F1 <- 
+  rbind(
+    # frá punkti 64°43'70 N – 24°12'00 V
+    c(GC(-241200), GC(644370)),
+    # í punkt 64°43'70 N – 24°26'00 V
+    # c(GC(-242600), GC(644370)),
+    # 12 sjómílna fjarlægð réttvísandi vestur frá Bjargtöngum (vms. 43)
+    destPointRhumb(coords_vp(43), b = 270, d = 12 * 1852),
+    # close the loop
+    destPointRhumb(coords_vp(43), b = 270, d = 400 * 1852),
+    destPointRhumb(c(GC(-241200), GC(644370)), b = 270, d = 400 * 1852),
+    c(GC(-241200), GC(644370))) %>% 
+  as_tibble() %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_intersection(eez.sfc) %>% 
+  mutate(name = "F1",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+F1.alt <- 
+  rbind(
+    # frá punkti 64°43'70 N – 24°12'00 V
+    # c(GC(-241200), GC(644370)),
+    # í punkt 64°43'70 N – 24°26'00 V
+    c(GC(-242600), GC(644370)),
+    # 12 sjómílna fjarlægð réttvísandi vestur frá Bjargtöngum (vms. 43)
+    destPointRhumb(coords_vp(43), b = 270, d = 12 * 1852),
+    # close the loop
+    destPointRhumb(coords_vp(43), b = 270, d = 400 * 1852),
+    destPointRhumb(c(GC(-242600), GC(644370)), b = 270, d = 400 * 1852),
+    c(GC(-242600), GC(644370))) %>% 
+  as_tibble() %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_intersection(eez.sfc) %>% 
+  mutate(name = "F1.alt",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = F1, fill = "pink")
+```
+
+*Flokkar 2 og 3*:
+
+* F.2. Tímabilið 1. júní – 31. desember utan línu sem dregin er 4 sjómílur utan viðmiðunarlínu frá línu réttvísandi vestur frá Malarrifi (vms. 38) að línu réttvísandi vestur frá Skálasnaga (vms. 40) og þaðan í punkt í 4 sjómílna fjarlægð réttvísandi vestur frá Bjargtöngum (vms. 43). 
+
+```{r}
+tmp1 <-
+  lh(p1 = 38, p2 = 40, b1 = 270, b2 = 270) %>%
+  st_intersection(outside_x_miles(miles = 4))
+tmp2 <- 
+  rbind(destPointRhumb(coords_vp(40), b = 270, d = 4 * 1852),
+        destPointRhumb(coords_vp(43), b = 270, d = 4 * 1852),
+        # close the loop
+        destPointRhumb(coords_vp(43), b = 270, d = 400 * 1852),
+        destPointRhumb(coords_vp(40), b = 270, d = 400 * 1852),
+        destPointRhumb(coords_vp(40), b = 270, d = 4 * 1852)) %>% 
+  as_tibble() %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_intersection(eez.sfc)
+F2 <- 
+  st_union(tmp1, tmp2) %>% 
+  mutate(name = "F2",
+         s1 = FALSE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = F2, fill = "pink")
+```
+
+*Flokkur 3*:
+
+* F.3. Tímabilið 1. janúar – 31. maí utan línu sem dregin er 4 sjómílur utan viðmiðunarlínu frá línu [réttvísandi vestur frá Malarrifi] 4) (vms. 38) að línu réttvísandi vestur frá Skálasnaga (vms. 40) og þaðan í punkt í 4 sjómílna fjarlægð réttvísandi vestur frá Bjargtöngum (vms. 43). 
+
+```{r}
+F3 <- 
+  F2 %>% 
+  mutate(name = "F3",
+         s1 = FALSE, s2 = FALSE, s3 = TRUE)
+p + geom_sf(data = F3, fill = "pink")
+```
+
+* F.4. Tímabilið 1. september – 31. desember utan línu sem dregin er 4 sjómílur utan við viðmiðunarlínu á Snæfellsnesi, norðan við línu réttvísandi vestur frá Malarrifi (vms. 38) og utan við viðmiðunarlínu milli Öndverðarnesvita (vms. 41) og Skorarvita (vms. 42). Að norðan markast svæði þetta af 65°16'00 N. 
+
+```{r}
+# North and south bounding box
+bb.ns <- 
+  tribble(~lon, ~lat,
+          -20, GC(651600),
+          -20, coords_vp(38)[,2],
+          -35, coords_vp(38)[,2],
+          -35, GC(651600),
+          -20, GC(651600)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_intersection(eez.sfc)
+# "west of" Öndverðarnesvita (vms. 41) og Skorarvita (vms. 42)
+bb.4142 <-
+  rbind(coords_vp(42),
+        coords_vp(41),
+        coords_vp(38),
+        # close the loop
+        destPointRhumb(coords_vp(38), b = 270, d = 400 * 1852),
+        destPointRhumb(coords_vp(42), b = 270, d = 400 * 1852),
+        coords_vp(42)) %>% 
+  as_tibble() %>% 
+  st_as_sf(coords = c("X", "Y"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON")
+# 4 miles around snæfellsnes
+VP.po.38.41.4miles <- 
+  VP.pt %>% 
+  filter(vp %in% 38:41) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_transform(crs = 9040) %>% 
+  st_buffer(dist = 4 * 1852) %>% 
+  st_transform(crs = 4326)
+F4 <-
+  st_difference(bb.4142, VP.po.38.41.4miles) %>% 
+  st_intersection(bb.ns) %>% 
+  st_intersection(eez.sfc) %>% 
+  mutate(name = "F4",
+         s1 = FALSE, s2 = FALSE, s3 = TRUE)
+p + geom_sf(data = F4, fill = "pink")
+```
+
+#### G. Vestfirðir.
+
+*Allir flokkar*:
+
+* G.1. 4) Allt árið frá línu réttvísandi vestur frá Bjargtöngum (vms. 43) að línu réttvísandi norður frá Horni (vms. 48), utan línu sem dregin er 12 sjómílur utan viðmiðunarlínu. 
+
+```{r}
+p0 <-
+  VP.pt %>% 
+  filter(vp == 1) %>% 
+  st_coordinates()
+p1 = 43
+p2 = 48
+b1 = 270
+b2 = 0
+G <- 
+  #lh(p1 = 43, p2 = 48, b1 = 270, b2 = 0) %>% 
+  rbind(p0,
+        VP.pt %>% 
+          filter(vp %in% p1:p2) %>% 
+          arrange(-vp) %>% 
+          st_coordinates(),
+        destPointRhumb(coords_vp(p1), b1, d = 1852 * 400),
+        destPointRhumb(coords_vp(1), b2, d = 1852 * 400),
+        p0) %>% 
+  as_tibble() %>%
+  st_as_sf(coords = c("X", "Y"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_intersection(outside_x_miles(miles = 12)) %>% 
+  #st_intersection(eez.sfc) %>% 
+  mutate(name = "G",
+         s1 = TRUE, s2 = TRUE, s3 = TRUE)
+p + geom_sf(data = G, fill = "pink")
+```
+
+```{r}
+all <- 
+  bind_rows(A, B1, B3, C1, C2, C3, C4, C5, C6, C7, C8,
+            D1, D2, D3, D4, D5, D6, E1, E2, E3, F1, F2, F3, F4, G) %>% 
+  mutate(ref = "Lög 1979_0041") %>% 
+  select(name, ref, s1, s2, s3)
+
+SF1 <- all %>% filter(s1) %>% st_union() %>% as_tibble() %>% mutate(name = "skipaflokkur 1")
+SF2 <- all %>% filter(s2) %>% st_union() %>% as_tibble() %>% mutate(name = "skipaflokkur 2")
+SF3 <- all %>% filter(s3) %>% st_union() %>% as_tibble() %>% mutate(name = "skipaflokkur 3")
+skipaflokkar <-
+  bind_rows(SF3, SF2, SF1) %>% 
+  st_as_sf() %>% 
+  mutate(ref = "Lög 1979_0041",
+         link = "http://www.althingi.is/lagas/nuna/1997079.html") %>% 
+  select(name, ref, link)
+if(SAVE) {
+  skipaflokkar %>% 
+    write_sf("/net/hafgola/var/ftp/pub/data/gpkg/log1979-0041.gpkg")
+  system("chmod a+r /net/hafgola/var/ftp/pub/data/gpkg/log1979-0041.gpkg")
+}
+```
+
+```{r, fig.width = 9, fig.height = 6}
+skipaflokkar <- 
+  read_sf("ftp://ftp.hafro.is/pub/data/gpkg/log1979-0041.gpkg")
+library(leaflet)
+all2 <- skipaflokkar  %>%  mutate(namef = as.factor(name))
+factpal <- colorFactor(topo.colors(5), all2$namef)
+leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(data = all2,
+              group = ~name,
+              stroke = FALSE, 
+              smoothFactor = 0.2, 
+              fillOpacity = 0.66,
+              color = ~factpal(name)) %>% 
+  addPolygons(data = landhelgi,
+              group = "Landhelgi") %>% 
+  addLayersControl(overlayGroups = c(all2$name, "Landhelgi"),
+                   options = layersControlOptions(collapsed = FALSE)) %>% 
+  hideGroup(c("Landhelgi"))
+```
+
+
+
+## REGLUGERÐIR
+
+### 2016_0942 Reglugerð um verndun kóralsvæða út af Suður- og Suðausturlandi
+
+[link](https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/20299)
+
+Allar veiðar nema veiðar á uppsjávarfiski með flotvörpu og hringnót eru bannaðar á eftirgreindum svæðum:
+
+```{r, fig.width=9, fig.height = 4}
+rgl <- 
+  read_csv("external/2016_0942_reglugerd-um-verndun-koralsvaeda-ut-af-sudur- og-sudausturlandi.csv") %>%
+  unite(gr, c("gr", "gr2"), sep = ".") %>% 
+  mutate(lon = -GC(lengd),
+         lat =  GC(breidd)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  group_by(gr, name) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  ungroup() %>% 
+  mutate(ref = "2016_0940",
+         area = lwgeom::st_geod_area(.),
+         allyear = TRUE,
+         gid1 = TRUE,
+         gid2 = TRUE,
+         gid5 = TRUE,
+         gid6 = TRUE,
+         gid15 = TRUE,
+         d1 = ymd("2021-01-01"),
+         d2 = ymd("2021-12-31")) %>% 
+  select(ref, gr, nafn = name, allyear:d2, area) %>% 
+  mutate(link = "https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/20299")
+if(SAVE) {
+  rgl %>% 
+    st_write(paste0(gpkg.path, "rgl2016-0942_korall.gpkg"),
+             append = FALSE)
+}
+```
+
+```{r, fig.width = 9, fig.heigth = 5}
+rgl2016_0942 <- 
+  read_sf("ftp://ftp.hafro.is/pub/data/gpkg/rgl2016-0942_korall.gpkg")
+mapview(rgl2016_0942, zcol = "nafn")
+```
+
+### 2019_0958 Reglugerð um friðun þorsks, skarkola, blálöngu og steinbíts á hrygningartíma
+
+[link](https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/21658)
+
+Reglugerð þessi gildir um friðun þorsks, skarkola, blálöngu og steinbíts í fiskveiðilandhelgi Íslands á hrygningartíma.
+
+```{r}
+rgl <- 
+  read_csv("external/2019-0958_reglugerd-um-fridun-a-hrygningartima.csv")
+tmp <- 
+  rgl %>% 
+  mutate(lon = -geo::geoconvert.1(lengd),
+         lat =  geo::geoconvert.1(breidd)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  group_by(gr, subset) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  mutate(gr2 = paste(gr, subset)) 
+```
+
+
+### 2019_0959 Reglugerð um friðunarsvæði við Ísland
+
+[link](https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/21659)
+
+Reglugerð þesssi gildir um friðunarsvæði í íslenskri fiskveiðilandhelgi sem sett eru til að stuðla að hagkvæmri nýtingu nytjastofna og verndun viðkvæmra hafsvæða.
+
+```{r}
+rgl <- 
+  read_csv("external/2019_0959_reglugerd-um-fridunarsvaedi-vid-island.csv") %>% 
+  mutate(lon = -GC(lengd),
+         lat =  GC(breidd)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  group_by(gr, name, gid6, gid1) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  ungroup() %>% 
+  mutate(rgl = "2019_0959",
+         allyear = TRUE, 
+         area = lwgeom::st_geod_area(.),
+         gr = as.character(gr)) %>% 
+  select(rgl, gr, name, area, allyear, gid6, gid1)
+if(SAVE) {
+  st_write(rgl, paste0(gpkg.path, "rgl2019-0959_fridunarsvaedi.gpkg"), 
+           append = FALSE)
+}
+```
+
+```{r, fig.width=9, fig.height = 4}
+rgl2019_0959 <- 
+  read_sf("ftp://ftp.hafro.is/pub/data/gpkg/rgl2019-0959_fridunarsvaedi.gpkg")
+mapview(rgl2019_0959, zcol = "name")
+```
+
+### 2019_0960 Reglugerð um takmarkanir við veiðum með fiskibotnvörpu
+
+**ERROR**
+
+[link](https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/21660)
+
+Reglugerð þessi gildir um takmarkanir við veiðum með fiskibotnvörpu í fiskveiðilandhelgi Íslands.
+
+```{r}
+rgl <- 
+  read_csv("external/2019_0960_reglugerd-um-takmarkanir-vid-veidum-med-fiskibotnvorpu.csv") %>% 
+  rename(ref = rgl) %>% 
+  mutate(lon = -GC(lengd),
+         lat =  GC(breidd)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  group_by(ref, gr, name, allyear, gid6, d1, d2, t1, t2) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  ungroup()
+
+# 6gr & 8gr: Að sunnan afmarkast svæðið af línu sem dregin er í 12 sjómílna 
+# fjarlægð frá viðmiðunarlínu, sbr. lög nr. 79/1997, um veiðar í
+# fiskveiðilandhelgi Íslands.
+rgl <- 
+  bind_rows(rgl %>% filter(!gr %in% c(6, 8)),
+            rgl %>% 
+              # the 12 miles
+              filter(gr %in% c(6, 8)) %>% 
+              st_difference(VP.po %>% 
+                              st_transform(crs = 9040) %>% 
+                              st_buffer(dist = 12 * 1852) %>% 
+                              st_transform(crs = 4326))) %>% 
+  arrange(gr)
+```
+
+12. gr.
+
+Veiðar með fiskibotnvörpu eru óheimilar allt árið innan þriggja mílna frá fjörumarki meginlandsins á svæði er markast að austan af línu sem dregin er réttvísandi suður frá 64°14,1´N - 14°58,4´V Stokksnesvita og að vestan af línu sem dregin er réttvísandi suður frá 63°48,0´N - 22°41,9´V Reykjanesvita.
+
+```{r}
+# create a "bounding box":
+bb.12.gr <- 
+  tribble(~lon, ~lat,
+          GC(-224190), 63,
+          GC(-224190), GC(635000),
+          GC(-145840), 64.6,
+          GC(-145840), 63) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON")
+
+gr12 <- 
+  mainland %>% 
+  st_transform(crs = 9040) %>% 
+  st_buffer(dist = 3 * 1852) %>% 
+  st_transform(crs = 4326) %>% 
+  st_intersection(bb.12.gr) %>% 
+  st_difference(mainland) %>% 
+  mutate(ref = "2019_0959",
+         gr = 12,
+         name = "Fyrir Suðurlandi",
+         allyear = TRUE,
+         gid6 = TRUE) %>% 
+  select(ref, gr, name, allyear, gid6) %>% 
+  rename(geometry = geom)
+
+
+rgl <- 
+  bind_rows(rgl, gr12) %>% 
+  arrange(gr)
+```
+
+13. gr.
+
+Veiðar með fiskibotnvörpu eru óheimilar allt árið innan línu sem dregin er í þriggja sjómílna fjarlægð frá fjörumarki eftirgreindra eyja og skerja: Elliðaeyjar, Bjarnareyjar, Heimaeyjar, Suðureyjar, Helliseyjar, Súlnaskers, Geirfuglaskers, Geldungs, Álseyjar, Grasleysu, Þrídranga og Einidrangs. Að norðan markast svæðið af línu sem dregin er í þriggja sjómílna fjarlægð frá fjörumarki meginlandsins, sbr. reglugerð nr. 732/1997 um bann við veiðum milli lands og Vestmannaeyja.
+
+```{r}
+bb.eyjar <-
+  st_bbox(c(xmin = GC(-210000),
+            xmax = GC(-200000),
+            ymin = GC( 631000),
+            ymax = GC( 633100)),
+          crs = 4326)
+bb.surstey <- 
+  st_bbox(c(xmin = GC(-204000),
+            xmax = GC(-203100),
+            ymin = GC(631500),
+            ymax = GC(631900)),
+          crs = st_crs(4326))
+veyjar <- 
+  read_sf("ftp://ftp.hafro.is/pub/data/gpkg/mainland.gpkg") %>% 
+  st_transform(crs = 4326) %>% 
+  st_crop(bb.eyjar)
+
+
+grein13 <- 
+  st_crop(biceland, bb.eyjar) %>% 
+  st_difference(st_as_sfc(bb.surstey)) %>% 
+  st_transform(crs = 9040) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_buffer(dist = 3 * 1852) %>% 
+  st_intersection(miles3 %>% st_transform(crs = 9040)) %>% 
+  st_transform(crs = 4326) %>% 
+  mutate(gid6 = TRUE) %>% 
+  rename(geometry = geom)
+
+ORNEFNI <- 
+  gisland::read_lmi("IS_50V:ornefni_flakar") |> 
+  st_cast("GEOMETRYCOLLECTION") %>% 
+  st_collection_extract("POLYGON")
+
+ornefni <- 
+  ORNEFNI |> 
+  filter(ornefni %in% c("Elliðaey", "Bjarnarey", "Heimaey", "Suðurey", 
+                          "Hellisey", "Súlnasker", "Geirfuglasker", "Geldungur",
+                          "Álsey", "Grasleysa", "Þrídrangar", "Einidrangur",
+                          "Surtsey", "Faxaskersviti", "Ystiklettur",
+                          "Brandur", "Faxasker")) 
+# this filter out too many
+  filter(nafnberi != "fiskimið")
+
+ornefni <- 
+  ornefni %>% 
+  st_crop(bb.eyjar)
+  st_make_valid() |> 
+  
+  select(nafn = nafnfitju) %>% 
+  st_centroid()
+ornefni.tb <- 
+  st_drop_geometry(ornefni) %>% 
+  bind_cols(st_coordinates(ornefni) %>% 
+              as_tibble() %>% 
+              rename(lon = X, lat = Y))
+```
+
+Þrátt fyrir ofangreint bann er þó heimilt á tímabilinu frá og með 21. febrúar til og með 15. maí að stunda veiðar innan svæðisins með fótreipisvörpu, á svæði vestan línu sem dregin er í réttvísandi norður frá Heimaey, þannig að austurkant Ystakletts og Faxaskersvita beri saman og norðan og vestan línu sem dregin er frá Heimaey um Grasleysu í Þrídranga, þaðan í Einidrang og síðan í réttvísandi suður.  
+
+Fótreipisvarpa er varpa sem búin er fótreipi gerðu úr vír eða keðju sem skífur, körtur úr gúmmíi eða gerviefni er þrætt upp á, enda sé heildarþvermálið ekki meira en 20 sm.
+
+```{r}
+ornefni <- 
+  read_sf("~/stasi/gis/LMI/is_50v_ornefni_wgs_84.gpkg") %>% 
+  filter(nafnfitju %in% c("Elliðaey", "Bjarnarey", "Heimaey", "Suðurey", 
+                          "Hellisey", "Súlnasker", "Geirfuglasker", "Geldungur",
+                          "Álsey", "Grasleysa", "Þrídrangar", "Einidrangur")) %>% 
+  filter(nafnberi_text != "fiskimið") |> 
+  st_crop(bb.eyjar)
+
+pts3 <- 
+  ornefni %>% 
+  filter(nafnfitju %in% c("Grasleysa", "Þrídrangar", "Einidrangur")) %>% 
+  st_centroid() %>% 
+  select(nafn = nafnfitju) %>% 
+  st_coordinates() %>% 
+  as_tibble() %>% 
+  janitor::clean_names()
+
+
+bb.ystiklettur <- 
+  st_bbox(c(xmin = -20.25294,
+            ymin =  63.44708,
+            xmax = -20.23714,
+            ymax = 63.45769),
+          crs = 4326)
+ystiklettur <- 
+  biceland %>% 
+  st_crop(bb.ystiklettur) %>% 
+  st_coordinates() %>% 
+  as_tibble() %>% 
+  filter(X == max(X)) %>% 
+  select(lon = X, lat = Y)
+bb <- 
+  tribble(~nafn, ~lon, ~lat,
+          NA_character_,   GC(-201440), GC(643000),
+          "Faxaskersviti", GC(-201440), GC(632760),
+          "Ystiklettur", ystiklettur$lon, ystiklettur$lat,
+          NA_character_, -20.29, pts3$y[1],
+          "Grasleysa", pts3$x[1], pts3$y[1],
+          "Þrídrangar", pts3$x[2], pts3$y[2],
+          "Einidrangur",pts3$x[3], pts3$y[3],
+          NA_character_, pts3$x[3], pts3$y[3] - 1,
+          NA_character_, pts3$x[3] - 1, pts3$y[3] - 1,
+          NA_character_,   GC(-211440), GC(643000))
+
+grein13.exception <- 
+  bb %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_intersection(grein13) %>% 
+  mutate(ref = "2019_0960",
+         gr = 13,
+         name = "Umhverfis Vestmannaeyjar",
+         allyear = FALSE,
+         gid6 = TRUE,
+         # time when closed
+         d1 = ymd("2021-05-16"),
+         d2 = ymd("2022-02-20"))
+# 21. febrúar til og með 15. maí
+
+gr13 <- 
+  st_difference(grein13, grein13.exception) %>% 
+  mutate(ref = "2019_0960",
+         gr = 13,
+         name = "Umhverfis Vestmannaeyjar",
+         allyear = TRUE,
+         gid6 = TRUE,
+         d1 = ymd("2021-01-01"),
+         d2 = ymd("2021-12-31")) %>% 
+  select(ref, gr, name, allyear, gid6, d1, d2)
+ggplot() +
+  theme_void() +
+  geom_sf(data = gr13, fill = "orange") +
+  geom_sf(data = grein13.exception, fill = "yellow", alpha = 0.2) +
+  geom_sf(data = veyjar) +
+  geom_text_repel(data = ornefni.tb, aes(lon, lat, label = nafn)) +
+  geom_point(data = ornefni.tb, aes(lon, lat), colour = "red")
+
+rgl <- 
+  bind_rows(rgl, gr13, grein13.exception) %>% 
+  arrange(gr) %>% 
+  mutate(gr = as.character(gr),
+         area = lwgeom::st_geod_area(.)) %>% 
+  select(ref:t2, area) %>%
+  mutate(d1 = if_else(is.na(d1), ymd("2021-01-01"), d1, NA_Date_),
+         d2 = if_else(is.na(d2), ymd("2021-12-31"), d2, NA_Date_)) %>% 
+  mutate(link = "https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/21660")
+# NOTE the t1 and t2 are dropped when saved
+if(SAVE) {
+  rgl %>% 
+    mutate(t1 = as.character(t1),
+           t2 = as.character(t2)) %>% 
+    st_write("/net/www/export/home/ftp/pub/data/spatial/rgl2019-0960_fiskibotnvarpa-takmarkanir.gpkg",
+             append = FALSE)
+  system("chmod a+rX /net/www/export/home/ftp/pub/data/spatial/rgl2019-0960_fiskibotnvarpa-takmarkanir.gpkg")
+}
+```
+
+```{r, fig.width=9, fig.height = 4}
+rgl2019_0960 <- 
+  read_sf("ftp://ftp.hafro.is/pub/data/spatial/rgl2019-0960_fiskibotnvarpa-takmarkanir.gpkg")
+m <- mapview::mapview(rgl2019_0960, zcol = "allyear")
+m@map
+```
+
+### 2019_0261 Reglugerð um takmarkanir við veiðum með línu á djúpslóð
+
+[link](https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/21661)
+
+```{r}
+rgl <-
+  read_csv("external/2019_0961_reglugerð-um-takmarkanir-vid-veidum-med-linu-a-djupslod.csv") %>% 
+  mutate(lon = GC(-lengd),
+         lat = GC(breidd)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  group_by(gr, nafn, gid1, allyear, d1, d2) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  ungroup()
+
+# 2gr & 4gr: Að sunnan afmarkast svæðið af línu sem dregin er í 12 sjómílna 
+# fjarlægð frá viðmiðunarlínu, sbr. lög nr. 79/1997, um veiðar í
+# fiskveiðilandhelgi Íslands.
+rgl <- 
+  bind_rows(rgl %>% filter(!gr %in% c(2, 4)),
+            rgl %>% 
+              # the 12 miles
+              filter(gr %in% c(2, 4)) %>% 
+              st_difference(VP.po %>% 
+                              st_transform(crs = 9040) %>% 
+                              st_buffer(dist = 12 * 1852) %>% 
+                              st_transform(crs = 4326))) %>% 
+  arrange(gr) %>% 
+  mutate(ref = "2019_0261",
+         area = lwgeom::st_geod_area(.),
+         d1 = if_else(is.na(d1), ymd("2021-01-01"), d1, NA_Date_),
+         d2 = if_else(is.na(d2), ymd("2021-12-31"), d2, NA_Date_)) %>% 
+  select(ref, gr:d2, area) %>% 
+  mutate(link = "https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/21661")
+if(SAVE) {
+  rgl %>% 
+    st_write(paste0(gpkg.path, "rgl2019-0961_lina-takmarkanir.gpkg"),
+             append = FALSE)
+}
+```
+
+```{r, fig.width = 9, fig.height = 4}
+rgl2019_0961 <- 
+  read_sf("ftp://ftp.hafro.is/pub/data/gpkg/rgl2019-0961_lina-takmarkanir.gpkg")
+mapview(rgl2019_0961, zcol = "allyear")
+```
+
+### 2019__0262 Reglugerð um veiðar á íslenskri sumargotssíld
+
+[link](https://www.reglugerd.is/reglugerdir/33/33b/nr/21662)
+
+### 2019_0263 Reglugerð um veiðar með dragnót við Ísland
+
+[link](https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/21663)
+
+```{r, fig.width=9, fig.height=6}
+# NOTE: gr 18.2 is not working here
+#       Some other parts of the regulation also not included
+eez.po <- 
+  st_difference(st_geometry(eez), st_geometry(mainland)) %>% 
+  st_transform(crs = 5325)
+
+rgl <- 
+  read_csv("external/2019_0963_reglugerd-um-veidar-med-dragnot-vid-island.csv") 
+
+pt <-
+  rgl %>% 
+  group_by(gr) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  mutate(lon = GC(-lengd),
+         lat = GC(breidd)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  st_transform(5325)
+li <- 
+  pt %>% 
+  group_by(gr) %>%
+  summarise(do_union = FALSE) %>%
+  st_cast("LINESTRING")
+
+res <- list()
+GR <- li$gr
+for(i in 1:length(GR)) {
+  #print(GR[i])
+  
+  # If a polygon
+  if(GR[i] %in% c("27.F", "28.B")) {
+    res[[i]] <-
+      li %>% 
+      filter(gr == GR[i]) %>% 
+      st_cast("POLYGON") %>% 
+      st_sf() %>% 
+      mutate(gr = GR[i])
+    # Here just lines
+  } else {
+    
+    DIST <- 5000
+    x <- 
+      st_split_fun(eez.po, li %>% filter(gr == GR[i]), dist = DIST) %>% 
+      st_sf() %>% 
+      mutate(gr = GR[i])
+    if(nrow(x) == 0) {
+      x <- 
+        st_split_fun(eez.po, li %>% filter(gr == GR[i]), dist = 2 * DIST) %>% 
+        st_sf() %>% 
+        mutate(gr = GR[i])
+    }
+    #if(nrow(x) == 0) print(nrow(x))
+    res[[i]] <- x
+  }
+  
+}
+
+po <- 
+  res %>% 
+  bind_rows() %>% 
+  left_join(rgl %>% select(gr, nafn) %>% distinct())
+
+
+
+# grein 27
+
+p1 <- GC(c(-145840, 641410))
+p2 <- GC(c(-224190, 634800)) 
+
+destPointRhumb(coords_vp(40), b = 270, d = 4 * 1852)
+bb <-
+  rbind(p1,
+        destPointRhumb(p1, b = 180, d = 220 * 1852),
+        destPointRhumb(p2, b = 180, d = 220 * 1852),
+        p2,
+        p1) %>% 
+  as_tibble() %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_bbox()
+
+#st_difference(eez, miles3) %>% 
+#  st_difference(mainland) %>% 
+#  st_geometry() %>% 
+#  st_crop(bb)
+#2019_0263
+if(SAVE) {
+  st_write(po %>% st_transform(crs = 4326), "/net/www/export/home/ftp/pub/data/spatial/rgl2019_0263_dragnot-incomplete.gpkg",
+           append = FALSE)
+  system("chmod a+rX /net/www/export/home/ftp/pub/data/spatial/rgl2019_0263_dragnot-incomplete.gpkg")
+}
+```
+
+```{r, fig.width = 9, fig.height = 4}
+read_sf("ftp://ftp.hafro.is/pub/data/spatial/rgl2019_0263_dragnot-incomplete.gpkg") %>% 
+  mapview(zcol = "nafn")
+```
+
+### 2019_0264 Reglugerð um veiðar á rækju
+
+[link](https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/21664)
+
+Úthafsrækjuveiðar bannaðar:
+
+```{r, fig.width = 9, fig.height = 4}
+# III. KAFLI Úthafsrækjuveiðar -------------------------------------------------
+# A: Fyrir Suðurlandi eru allar rækjuveiðar óheimilar á svæði milli 14°30´V og 23°00´V allt árið.
+gr5A <-
+  tribble(~gr, ~gr2,    ~lon,    ~lat,
+          5,   "A", 230000,  600000,
+          5,   "A", 230000,  635000,
+          5,   "A", 224000,  635000,
+          5,   "A", 160000,  645000,
+          5,   "A", 143000,  642630,
+          5,   "A", 143000,  600000,
+          5,   "A", 230000,  600000) %>% 
+  mutate(lon = -geo_convert(lon),
+         lat =  geo_convert(lat)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_difference(mainland)
+# B. Við Eldey eru úthafsrækjuveiðar óheimilar á svæði sem að sunnan markast af
+# línu sem dregin er réttvísandi 245° frá Reykjanesaukavita. Að vestan markast
+# svæðið af 23°40´V og að norðan af 64°05´N.
+#gr5B
+#geosphere::destPointRhumb
+#bearingRhumb
+bb1 <- 
+  tribble(~lon, ~lat,
+          234000, 640500,
+          224100, 640500,
+          223500, 635500,
+          224151.78, 634801.68, # Reykjanesaukaviti 	
+          224200, 600000,
+          234000, 600000) %>% 
+  mutate(lon = -geo_convert(lon),
+         lat =  geo_convert(lat)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON")
+
+rnes2 <- c(-geo_convert(224151.78), geo_convert(634801.68))
+pt2 <- dest_point(rnes2, 245)
+pt3 <- pt2 %>% dest_point(b = 0)
+pt4 <- pt3 %>% dest_point(b = 90)
+gr5B <- 
+  rbind(rnes2, pt2, pt3, pt4, rnes2) %>% 
+  as_tibble() %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_intersection(bb1) %>% 
+  st_difference(mainland)
+#p2 <- mapedit::editFeatures(p)
+
+
+#  C Við Snæfellsnes eru úthafsrækjuveiðar óheimilar á svæði sem afmarkast milli eftirfarandi hnita:
+gr5C <- 
+  tribble(  ~lat,   ~lon,
+            640490, 224360,
+            644370, 234820,
+            644500, 235530,
+            645130, 240250,
+            645310, 240250,
+            651500, 240250,
+            651500, 254000,
+            640500, 254000,
+            640490, 224360) %>% 
+  mutate(lon = -geo_convert(lon),
+         lat =  geo_convert(lat)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  st_difference(mainland)
+
+gr5 <- 
+  bind_rows(gr5A %>% mutate(gr = 5, gr2 = "A", nafn = "Suðurland"),
+            gr5B %>% mutate(gr = 5, gr2 = "B", nafn = "Eldey"),
+            gr5C %>% mutate(gr = 5, gr2 = "C", nafn = "Snæfellsnes")) %>% 
+  mutate(area = lwgeom::st_geod_area(.)) %>% 
+  select(gr:nafn, area)
+mapview(eez %>% st_cast("LINESTRING")) + mapview(gr5, zcol = "nafn")
+# IV. KAFLI Rækjuveiðar á Dohrnbanka -------------------------------------------
+
+# V. KAFLI Rækjuveiðar á grunnslóð ---------------------------------------------
+# 10. grein
+# Veiðisvæði rækju á grunnslóð eru þessi:
+# A. Breiðafjörður, norðurhluti:
+#        Að sunnan markast svæðið af 65°15,00´N
+#        A vestan markast svæðið af 24°00,00´V
+# via mapedit
+bb <- 
+  tibble(lon = c(-24.00000, -24.00000, -23.79639, -23.52722, -22.74719, -22.02210, -21.50000, -21.50000, -24.00000),
+         lat = c(65.25000, 65.50000, 65.48107, 65.54709, 65.70804, 65.68769, 65.50000, 65.25000, 65.25000)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON")
+
+
+```
+
+### 2019_0265 Reglugerð um tímabundnar lokanir á veiðisvæðum á grunnslóð við Ísland
+
+CHECK: link below says this one is "ógild"
+
+[link](https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/21665)
+```{r, fig.width=9, fig.height=6}
+rgl2019_0265 <- 
+  read_csv("external/2019_0965_reglugerd-um-timabundnar-lokanir-a-veidisvaedum-a-grunnslod-vid-island.csv") %>% 
+  mutate(lon = GC(-lengd),
+         lat = GC(breidd)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  group_by(gr) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON")
+rgl2019_0265 <- 
+  rgl2019_0265 %>% 
+  st_difference(mainland) %>% 
+  select(gr)
+mapview(rgl2019_0265, zcol = "gr")
+#st_write(rgl2019_0265, "/net/www/export/home/ftp/pub/data/shapes/grunnslod_incomplete.gpkg")
+#system("chmod a+rX /net/www/export/home/ftp/pub/data/shapes/grunnslod_incomplete.gpkg")
+```
+
+### 1997_0732 Reglugerð um bann við veiðum milli lands og Vestmannaeyja. 
+
+[link](https://www.reglugerd.is/reglugerdir/eftir-raduneytum/sjavarutvegsraduneyti/nr/3809)
+
+
+1. gr.
+
+Frá og með 1. janúar 1998 eru veiðar með öllum veiðarfærum bannaðar á svæði þar sem vatnsleiðsla og rafstrengur liggja milli lands og Vestmannaeyja. Að austan markast svæðið af línu sem dregin er þannig að Bjarnarey að vestan beri í Elliðaey að austan. Að vestan takmarkast svæðið af línu sem dregin er þannig að austurkant Ystakletts og Faxaskersvita beri saman.
+
+```{r}
+
+```
+
+
+## AUGLÝSING
+
+### 2006_0050 AUGLÝSING um friðland í Surtsey
+
+[link](https://www.stjornartidindi.is/Advert.aspx?ID=611b81d2-d439-4c98-a21e-23b8bb9abcf8), sjá einnig [link](https://www.stjornartidindi.is/Advert.aspx?ID=404055a1-153b-4098-91c8-eeacc853ff87). 
+
+3. gr. Mörk friðlandsins
+
+Friðlandið nær til Surtseyjar ofan sjávarmáls og niður á hafsbotn ásamt hafsvæði umhverfis eyna sem markast af línu sem dregin er milli fjögurra hornpunkta, sbr. meðfylgjandi töflu. Hnit punktanna eru gefin upp í ISN93 kerfi og lengd og breidd (gráðum, mínútum og sekúndum). Mörk svæðisins eru sýnd á korti sem fylgir auglýsingu þessari.
+
+```{r}
+# https://www.stjornartidindi.is/Advert.aspx?ID=404055a1-153b-4098-91c8-eeacc853ff87
+# https://www.stjornartidindi.is/Advert.aspx?ID=611b81d2-d439-4c98-a21e-23b8bb9abcf8
+# 
+# NOTE: Þetta svæði í 3. grein eru mörk friðlandsins, en veiðar eru samt heimilar innan þess
+#       sbr. 8 grein auglýsgingar 2006/50 (hér að neðan):
+surtsey.fridland <- 
+  tribble(~id, ~breidd, ~lengd,
+          1,    631608, 204115,
+          2,    632022, 204115,
+          3,    632022, 203116,
+          4,    631608, 203116) %>% 
+  mutate(lon = -geo::geoconvert.1(lengd),
+         lat =  geo::geoconvert.1(breidd)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  mutate(type = "Auglýsing",
+         ref = "2006/0050",
+         gr = "3") %>% 
+  select(type, ref, gr)
+```
+
+8. gr. Veiði og notkun skotvopna
+
+Veiðar með veiðarfærum sem dregin eru eftir botni svo sem botnvörpu, dragnót og plóg eru óheimilar í friðlandinu, innan svæðis sem afmarkast af eftirfarandi punktum, 1) 20°36'04″ V og 63°16'08″ N 2) 20°40'00″ V og 63°16'08″ N 3) 20°40'00″ V og 63°17'52″ N 4) 20°35'31″ V og 63°20'22″ N 5) 20°31'16″ V og 63°18'15″ N.
+
+Notkun skotvopna er bönnuð í friðlandinu, bæði á landi og sjó.
+
+```{r}
+surtsey <- 
+  tribble(~id, ~lengd, ~breidd,
+          1,   203604,  631608,
+          2,   204000,  631608,
+          3,   204000,  631752,
+          4,   203531,  632022,
+          5,   203116,  631815) %>% 
+  mutate(lon = -geo::geoconvert.1(lengd),
+         lat =  geo::geoconvert.1(breidd)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  mutate(type = "Auglýsing",
+         ref = "2006/0050",
+         gr = "8",
+         area = lwgeom::st_geod_area(.)) %>% 
+  select(type, ref, gr, area) %>% 
+  mutate(link = "https://www.stjornartidindi.is/Advert.aspx?ID=611b81d2-d439-4c98-a21e-23b8bb9abcf8")
+#surtsey %>% 
+#  write_sf("/net/www/export/home/ftp/pub/data/shapes/surtsey_auglysing-2006-0050.gpkg")
+#system("chmod a+r /net/www/export/home/ftp/pub/data/shapes/surtsey_auglysing-2006-0050.gpkg")
+```

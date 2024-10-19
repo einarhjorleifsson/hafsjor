@@ -1,0 +1,53 @@
+---
+title: "Speed"
+---
+
+```{r, echo = FALSE}
+library(leaflet)
+library(leaflet.extras2)
+leaflet() %>%
+  setView(-24.6, 66.75, zoom = 7) |>
+  addMapPane("left", zIndex = 0) %>%
+  addMapPane("right", zIndex = 0) %>%
+  addTiles(group = "base", layerId = "right",
+           options = pathOptions(pane = "right")) %>%
+  addTiles(group = "base", layerId = "left",
+           options = pathOptions(pane = "left")) |> 
+  addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+              layers = "hafro:trawl_3857_byte",
+              group = "Gamli",
+              options = WMSTileOptions(pane = "left",
+                                       format = "image/png",
+                                       transparent  = TRUE,
+                                       crs = "EPSG:3057",
+                                       opacity = 1)) |>
+  addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+              layers = "hafro:longline_3857_byte",
+              group = "Gamli",
+              options = WMSTileOptions(pane = "left",
+                                       format = "image/png",
+                                       transparent  = TRUE,
+                                       crs = "EPSG:3057",
+                                       opacity = 1)) |>
+  addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+              layers = "test:trawl_3857_byte",
+              group = "Nýji",
+              options = WMSTileOptions(pane = "right",
+                                       format = "image/png",
+                                       transparent  = TRUE,
+                                       crs = "EPSG:3057",
+                                       opacity = 1)) |> 
+  addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+              layers = "test:longline_3857_byte",
+              group = "Nýji",
+              options = WMSTileOptions(pane = "right",
+                                       format = "image/png",
+                                       transparent  = TRUE,
+                                       crs = "EPSG:3057",
+                                       opacity = 1)) |> 
+  addSidebyside(layerId = "sidecontrols",
+                rightId = "right",
+                leftId = "left") |> 
+  addLayersControl(overlayGroups = c("Gamli", "Nýji"))
+```
+
