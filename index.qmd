@@ -18,7 +18,7 @@ m0 <-
   leaflet() |>
   setView(-19, 65, zoom = 5) |>
   hs_add_base() |> 
-  hs_add_veidar() |> 
+  hs_add_veidar_new() |> 
   hs_add_lifriki() |> 
   hs_add_log() |> 
   addPolygons(data = skipaflokkar,
@@ -50,7 +50,7 @@ m <-
       sortGroups = FALSE,
       sortBaseLayers = FALSE)) |> 
   leaflet.extras::addFullscreenControl() |> 
-  leaflet::hideGroup(group = c("Botndýr", "EEZ", "Skipaflokkar", "Nothing here yet"))
+  leaflet::hideGroup(group = c("Longline", "Net", "Jiggers", "Demersal seine", "Shrimp trawl", "Nephrops trawl", "Dredge", "Botndýr", "EEZ", "Skipaflokkar", "Nothing here yet"))
 m
 ```
 
