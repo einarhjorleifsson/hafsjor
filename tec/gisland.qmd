@@ -3,10 +3,12 @@ title: "gisland"
 eval: false
 ---
 
-```{r, echo = FALSE}
+```{r}
+#| echo: false
 # https://r.geocompx.org/read-write.html
-SAVE <- FALSE
-gpkg.path <- "/net/hafgola/var/ftp/pub/data/gpkg/"
+SAVE <- TRUE
+#gpkg.path <- "/net/hafgola/var/ftp/pub/data/gpkg/"
+gpkg.path <- "/u3/haf/data/gpkg/"
 
 library(lubridate)
 library(sf)
@@ -15,7 +17,12 @@ library(mapview)
 library(geosphere)
 library(tidyverse)
 library(ggrepel)
+library(here)
+# remotes::install_github("einarhjorleifsson/gisland")
+library(gisland)
 GC <- geo_convert <- gisland::geo_convert
+
+# föll -------------------------------------------------------------------------
 st_split_fun <- function(po, li, dist = 5000) {
   
   # just so we can revert back to the original crs for the return object
@@ -23,88 +30,79 @@ st_split_fun <- function(po, li, dist = 5000) {
   crs.li <- sf::st_crs(li)
   
   li.tb <-
-    li %>%
-    sf::st_transform(crs = 4326) %>%
-    sf::st_coordinates() %>%
+    li |>
+    sf::st_transform(crs = 4326) |>
+    sf::st_coordinates() |>
     tidyr::as_tibble()
   
   # start point "extention" by bearing
-  li.start <- li.tb %>% head(n = 2)
+  li.start <- li.tb |> head(n = 2)
   # bearing from the second first point to the first point - i.e. inverse
   bearing.start <-
     geosphere::bearingRhumb(c(li.start$X[2], li.start$Y[2]), c(li.start$X[1], li.start$Y[1]))
   pt.start <-
-    geosphere::destPointRhumb(c(li.start$X[1], li.start$Y[1]), b = bearing.start, d = dist) %>%
-    tidyr::as_tibble() %>%
+    geosphere::destPointRhumb(c(li.start$X[1], li.start$Y[1]), b = bearing.start, d = dist) |>
+    tidyr::as_tibble() |>
     dplyr::rename(X = lon, Y = lat)
   
   # end point "extentions" by bearing
-  li.end <- li.tb %>% tail(n = 2)
+  li.end <- li.tb |> tail(n = 2)
   bearing.end <-
     geosphere::bearingRhumb(c(li.end$X[1], li.end$Y[1]), c(li.end$X[2], li.end$Y[2]))
   pt.end <-
-    geosphere::destPointRhumb(c(li.end$X[2], li.end$Y[2]), b = bearing.end, d = dist) %>%
-    tidyr::as_tibble() %>%
+    geosphere::destPointRhumb(c(li.end$X[2], li.end$Y[2]), b = bearing.end, d = dist) |>
+    tidyr::as_tibble() |>
     dplyr::rename(X = lon, Y = lat)
   
   li.expanded <-
     dplyr::bind_rows(pt.start,
                      li.tb,
-                     pt.end) %>%
+                     pt.end) |>
     sf::st_as_sf(coords = c("X", "Y"),
-                 crs = 4326) %>%
-    sf::st_transform(crs = crs.li) %>%
-    dplyr::summarise(do_union = FALSE) %>%
-    sf::st_cast("LINESTRING") %>%
+                 crs = 4326) |>
+    sf::st_transform(crs = crs.li) |>
+    dplyr::summarise(do_union = FALSE) |>
+    sf::st_cast("LINESTRING") |>
     sf::st_geometry()
   
   
-  lwgeom::st_split(po, li.expanded) %>%
-    sf::st_collection_extract(c("POLYGON")) %>%
-    sf::st_as_sf() %>%
-    dplyr::mutate(area = st_area(.)) %>%
-    dplyr::filter(area != max(area)) %>%
+  lwgeom::st_split(po, li.expanded) |>
+    sf::st_collection_extract(c("POLYGON")) |>
+    sf::st_as_sf() |>
+    dplyr::mutate(area = st_area(.)) |>
+    dplyr::filter(area != max(area)) |>
     # combine polygons in case there is more than one - like 2 "sub-fjords"
     sf::st_union()
 }
 ```
 
-
-
 ```{r}
+#| echo: false
 # external data ----------------------------------------------------------------
-biceland <- 
-  gisland::read_strandlinur()
+biceland <- gisland::read_strandlinur()
 biceland <- 
   biceland |> 
-  select(eyjarsker) %>% 
-  # to calculate area
-  #st_transform(crs = 3395) %>% 
-  mutate(area = st_area(.)) %>% 
-  arrange(desc(area)) %>% 
-  #st_transform(crs = 4326) %>% 
+  select(eyjarsker) |> 
+  mutate(area = st_area(geom)) |> 
+  arrange(desc(area)) |> 
   mutate(id = 1:n(),
-         sker = ifelse(eyjarsker == 2, TRUE, FALSE)) %>% 
+         sker = ifelse(eyjarsker == 2, TRUE, FALSE)) |> 
   select(id, sker, area)
 if(SAVE) {
   write_sf(biceland, paste0(gpkg.path, "biceland.gpkg"), append = FALSE)
 }
 iceland <- 
-  biceland %>% 
-  filter(!sker) %>% 
+  biceland |> 
+  filter(!sker) |> 
   select(-sker)
 if(SAVE) {
   write_sf(iceland, paste0(gpkg.path, "iceland.gpkg"), append = FALSE)
 }
 mainland <-
-  biceland %>% 
+  biceland |> 
   filter(area == max(area))
 if(SAVE) {
   write_sf(mainland, paste0(gpkg.path, "mainland.gpkg"), append = FALSE)
-}
-# föll -------------------------------------------------------------------------
-pretty_coords <- function(x, nw = "N") {
-  paste0(str_sub(x,1,2),"°",str_sub(x,3,4),"'",str_sub(x,5)," ", nw)
 }
 ```
 
@@ -113,7 +111,7 @@ pretty_coords <- function(x, nw = "N") {
 Skjalið inniheldur R-scriptur að baki myndun fláka er varðar ýmis svæði tengt fiskveiðum. Afurðin (ásamt öðrum gögnum) er að finna á [FTP heimasíðu Hafró, undirsvæði pub/data/shapes](ftp://ftp.hafro.is/pub/data/shapes):
 
 ```{r}
-fs::dir_tree("/net/hafgola/var/ftp/pub/data/gpkg")
+fs::dir_tree("/u3/haf/data/gpkg")
 ```
 
 Hægt er að nálgast gögnin beint úr R, dæmi:
@@ -127,7 +125,7 @@ mapview(fridur, zcol = "nafn")
 
 ### Lög um landhelgi, aðlægt belti, efnahagslögsögu og landgrunn
 
-sjá: [https://www.althingi.is/lagas/nuna/1979041.html)(https://www.althingi.is/lagas/nuna/1979041.html)
+sjá: [https://www.althingi.is/lagas/nuna/1979041.html](https://www.althingi.is/lagas/nuna/1979041.html)
 
 #### I. Landhelgi
 
@@ -135,115 +133,138 @@ sjá: [https://www.althingi.is/lagas/nuna/1979041.html)(https://www.althingi.is/
 
 ```{r}
 GP <- 
-  read_csv("external/log/grunnpunktar.csv",
+  read_csv(here("external/log/grunnpunktar.csv"),
            col_types = c("innc"))
-GP %>% 
-  mutate(breidd = pretty_coords(breidd),
-         lengd = pretty_coords(lengd, "V")) %>% 
+GP |> 
+  mutate(breidd = pretty_coordinates(breidd),
+         lengd = pretty_coordinates(lengd, "V")) |> 
   knitr::kable()
 ```
 
 *Landhelgin skal auk þess afmörkuð af línu sem alls staðar er 12 sjómílur frá stórstraumsfjöruborði Kolbeinseyjar (67°08'59,57"N, 18°40'58,70"V), Hvalbaks (64°35'45,42"N, 13°16'37,71"V) og ystu annesjum og skerjum Grímseyjar (66°34'03,27"N, 18°01'18,74"V; 66°33'33,72"N, 18°00'03,65"V; 66°32'45,09"N, 17°58'38,74"V; 66°32'00,88"N, 17°58'40,37"V; 66°31'29,42"N, 17°58'45,61"V; 66°31'36,26"N, 17°59'24,84"V; 66°31'40,69"N, 17°59'43,81"V; 66°32'15,60"N, 18°01'17,25"V; 66°32'21,61"N, 18°01'22,93"V; 66°32'33,57"N, 18°01'34,45"V; 66°33'04,77"N, 18°01'48,60"V; 66°34'01,34"N, 18°01'28,13"V).*
 
 ```{r}
-# Grunnpunktar: A tibble -------------------------------------------------------
-GP.tb <- 
-  # close the loop
-  bind_rows(GP,
-            tibble(gp = NA,
-                   nafn = GP$nafn[1],
-                   breidd = GP$breidd[1],
-                   lengd  = GP$lengd[1])) %>% 
-  mutate(region = "meginland")
-GP.tb.sker <- 
-  tribble(~nafn, ~lengd, ~breidd,
-          'Kolbeinsey', 184058.70, 670859.57,
-          'Hvalbakur',  131637.71, 643545.42) %>% 
-  mutate(region = tolower(nafn))
-GP.tb.grimsey <- 
-  read_csv("external/grimsey.cvs")
-GP.tb.grimsey <-
-  GP.tb.grimsey %>% 
-  bind_rows(GP.tb.grimsey,
-            tibble(breidd = GP.tb.grimsey$breidd[1],
-                   lengd = GP.tb.grimsey$lengd[1])) %>% 
-  mutate(nafn = "Grímsey",
-         region = "grimsey")
-GP.pt <- 
-  bind_rows(GP.tb, GP.tb.sker, GP.tb.grimsey) %>% 
-  mutate(ref = "Lög 1979_0041",
-         link = "https://www.althingi.is/lagas/nuna/1979041.html")
-if(SAVE) {
-  GP.pt %>% write_csv("/net/hafgola/var/ftp/pub/data/csv/grunnpunktar.csv")
-}
-# read from scatch
-GP.pt <-read_csv("ftp://ftp.hafro.is/pub/data/csv/grunnpunktar.csv")
+GP.sker <- 
+  tribble(~gp, ~nafn, ~breidd, ~lengd, ~region,
+          1, 'Kolbeinsey', 670859.57, 184058.70, "kolbeinsey",
+          2, 'Hvalbakur',  643545.42, 131637.71,  "hvalbakur")
+GP.grimsey <- 
+  tribble(~gp, ~nafn, ~breidd, ~lengd, ~region,
+          1, "Grímsey", 663403.27, 180118.74, "grimsey",
+          2, "Grímsey", 663333.72, 180003.65, "grimsey",
+          3, "Grímsey", 663245.09, 175838.74, "grimsey",
+          4, "Grímsey", 663200.88, 175840.37, "grimsey",
+          5, "Grímsey", 663129.42, 175845.61, "grimsey",
+          6, "Grímsey", 663136.26, 175924.84, "grimsey",
+          7, "Grímsey", 663140.69, 175943.81, "grimsey",
+          8, "Grímsey", 663215.60, 180117.25, "grimsey",
+          9, "Grímsey", 663221.61, 180122.93, "grimsey",
+          10, "Grímsey", 663233.57, 180134.45, "grimsey",
+          11, "Grímsey", 663304.77, 180148.60, "grimsey",
+          12, "Grímsey", 663401.34, 180128.13,  "grimsey")
+bind_rows(GP.sker,
+          GP.grimsey) |> 
+  mutate(breidd = pretty_coordinates(breidd),
+         lengd = pretty_coordinates(lengd, "V")) |> 
+  knitr::kable()
+```
 
-GP.pt <- 
-  GP.pt %>% 
+To generate the object we:
+
+* Close the loop for mainland and grimsey by adding the first point as the last record
+* Convert point values for Kolbeinsey and Hvalbakur to polygon using a small radius (10 meters)
+* Convert base points to polygon and add the 12 mile buffer
+
+```{r}
+PO.sker <- 
+  GP.sker |> 
   mutate(lon = -GC(lengd),
-         lat =  GC(breidd)) %>% 
+         lat =  GC(breidd)) |> 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) |> 
+  st_transform(crs = 9040) |> 
+  st_buffer(dist = 10) |> 
+  st_transform(crs = 4326)
+landhelgi_grunnhnit <- 
+  bind_rows(GP |> mutate(region = "mainland"),
+            GP |> mutate(region = "mainland") |> filter(gp == 1),
+            GP.grimsey, 
+            GP.grimsey |> filter(gp == 1)) |> 
+  mutate( lon = -GC(lengd),
+          lat =  GC(breidd)) |> 
   st_as_sf(coords = c("lon", "lat"),
            crs = 4326,
-           remove = FALSE)
-if(SAVE) {
-  GP.pt %>%
-    st_write(paste0(gpkg.path, "grunnpunktar.gpkg"), append = FALSE)
-}
-GP.po <- 
-  bind_rows(GP.pt %>% 
-              # not sker because they are just points
-              filter(region %in% c("meginland", "grimsey")) %>% 
-              group_by(region) %>% 
-              summarise(do_union = FALSE) %>% 
-              st_cast("LINESTRING") %>% 
-              st_cast("POLYGON"),
-            GP.pt %>% 
-              filter(region %in% c("kolbeinsey", "hvalbakur")) %>% 
-              st_transform(crs = 9040) %>% 
-              st_buffer(dist = 200) %>% 
-              st_transform(crs = 4326) %>% 
-              select(region))
-
-if(SAVE) {
- GP.po %>%
-   st_cast("LINESTRING") %>%
-   st_write(paste0(gpkg.path, "grunnlina.gpkg"), append = FALSE)
-}
-
-landhelgi <- 
-  GP.po %>% 
-  st_transform(crs = 9040) %>% 
-  st_buffer(dist = 12 * 1852) %>% 
-  st_union() %>% 
-  st_transform(crs = 4326) %>% 
-  st_sf() %>% 
+           remove = FALSE) |> 
+  group_by(region) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  bind_rows(PO.sker |> select(region)) |> 
+  mutate(nafn = "landhelgi",
+         ref = "Lög 1979_0041",
+         url = "https://www.althingi.is/lagas/nuna/1979041.html") |> 
+  select(ref, region, everything())
+landhelgi_lina <- 
+  landhelgi_grunnhnit |> 
+  st_transform(crs = 9040) |> 
+  st_buffer(dist = 12 * 1852, nQuadSegs = 250) |> 
+  st_union() |> 
+  st_transform(crs = 4326) |> 
+  st_cast("MULTILINESTRING") |> 
+  st_as_sf() |> 
   mutate(name = "Landhelgi",
          ref = "Lög 1979_0041",
-         link = "https://www.althingi.is/lagas/nuna/1979041.html") %>% 
-  select(name, ref, link)
-
+         url = "https://www.althingi.is/lagas/nuna/1979041.html") |> 
+  select(name, ref, geometry = x, url)
+  
 if(SAVE) {
- landhelgi %>%
-    st_write(paste0(gpkg.path, "landhelgi.gpkg"), append = FALSE)
+  landhelgi_lina |>
+    st_write(paste0(gpkg.path, "landhelgi_lina.gpkg"), append = FALSE)
 }
 ```
 
-```{r, echo = FALSE, eval = FALSE}
+#### I.A. Aðlægt belti.
+
+**2. gr. a.**
+
+Aðlægt belti er svæði utan landhelgi sem afmarkast af línu sem alls staðar er 24 sjómílur frá grunnlínum landhelginnar.
+
+```{r}
+adlaeg_belti <-
+  landhelgi_grunnhnit |> 
+  st_transform(crs = 9040) |> 
+  st_buffer(dist = 24 * 1852, nQuadSegs = 250) |> 
+  st_union() |> 
+  st_transform(crs = 4326) |> 
+  st_cast("MULTILINESTRING") |> 
+  st_as_sf() |> 
+  mutate(name = "Aðlæg belti",
+         ref = "Lög 1979_0041",
+         url = "https://www.althingi.is/lagas/nuna/1979041.html") |> 
+  select(name, ref, geometry = x, url)
+if(SAVE) {
+  adlaeg_belti |>
+    st_write(paste0(gpkg.path, "adlaeg-belti_lina.gpkg"), append = FALSE)
+}
+```
+
+```{r}
+#| echo: false
+#| eval: false
 # Ekki lengur notað (ætti samt að vera fyrir viðmiðunarpunkta, skv.
 #  orðanna hljóðan í reglugerð
 grimsey.bb <- 
   tibble(x =  c(-19,-17.5,-17.5,-19,-19),
-         y = c(66.4,66.4,67,67,66.4)) %>% 
+         y = c(66.4,66.4,67,67,66.4)) |> 
   st_as_sf(coords = c("x", "y"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
   st_cast("POLYGON")
 grimsey2.4326 <- 
-  st_crop(biceland, grimsey.bb) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("MULTIPOLYGON") %>% 
-  mutate(area = "Grímsey") %>% 
+  st_crop(biceland, grimsey.bb) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("MULTIPOLYGON") |> 
+  mutate(area = "Grímsey") |> 
   rename(geometry = geom)
 ```
 
@@ -255,63 +276,72 @@ grimsey2.4326 <-
 Þar til annað verður ákveðið skulu efnahagslögsaga og landgrunn Íslands miðuð við 200 sjómílur frá grunnlínum landhelginnar að því undanskildu þó að þar sem skemmra er en 400 sjómílur milli grunnlína Færeyja og Grænlands annars vegar og Íslands hins vegar skulu efnahagslögsaga og landgrunn Íslands afmarkast af miðlínu.*
 
 ```{r}
+eez <- gisland::read_eez()
 # eez midlinur
 midlinur <- 
-  read_csv("ftp://ftp.hafro.is/pub/data/csv/midlinur_eez.csv",
-           col_types = c("cnncc")) %>%
+  read_csv(here("external/midlinur.csv"))
+
+midlinur |> 
+  mutate(breidd = pretty_coordinates(breidd, "N"),
+         lengd = pretty_coordinates(lengd, "V")) |> 
+  knitr::kable()
+
+
+midlinur <- 
+  midlinur |>
   mutate(lon = -GC(lengd),
          lat =  GC(breidd))
 # Miðlína Ísland-Færeyar -------------------------------------------------------
 fo <- 
-  midlinur %>% 
-  filter(region == "faroe") %>% 
-  mutate(id2 = 1:n()) %>% 
+  midlinur |> 
+  filter(region == "faroe") |> 
+  mutate(id2 = 1:n()) |> 
   arrange(-id2)
 # Búa til fláka
 fo.pol <-
   bind_rows(fo,
             tibble(lon = c(0, 0, fo$lon[1], fo$lon[1]),
-                   lat = c(fo$lat[10], 60, 60, fo$lat[1]))) %>% 
+                   lat = c(fo$lat[10], 60, 60, fo$lat[1]))) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
   st_cast("POLYGON")
 # Miðlína Ísland-Grænland-JanMayen ----------------------------------------------
 grjm <-
-  midlinur %>% 
-  filter(region != "faroe") %>% 
+  midlinur |> 
+  filter(region != "faroe") |> 
   arrange(-lon)
 grjm.pol <-
   bind_rows(grjm,
             tibble(lon = c(-40, -40, grjm$lon[1], grjm$lon[1]),
-                   lat = c(grjm$lat[19], 71, 71, grjm$lat[1]))) %>% 
+                   lat = c(grjm$lat[19], 71, 71, grjm$lat[1]))) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
   st_cast("POLYGON")
 
 eez.raw <- 
-  GP.po %>% 
-  st_transform(crs = 9040) %>% 
-  st_buffer(dist = 200 * 1852) %>% 
-  st_union() %>% 
+  GP.po |> 
+  st_transform(crs = 9040) |> 
+  st_buffer(dist = 200 * 1852) |> 
+  st_union() |> 
   st_transform(crs = 4326)
 
 # NOTE: One of the jm-points falls outside the 200 miles
 eez <- 
-  st_difference(eez.raw %>% st_transform(crs = 9040),
-                fo.pol %>% st_transform(crs = 9040)) %>% 
-  st_difference(grjm.pol %>% st_transform(crs = 9040)) %>% 
-  st_transform(crs = 4326) %>% 
-  st_sf() %>% 
+  st_difference(eez.raw |> st_transform(crs = 9040),
+                fo.pol |> st_transform(crs = 9040)) |> 
+  st_difference(grjm.pol |> st_transform(crs = 9040)) |> 
+  st_transform(crs = 4326) |> 
+  st_sf() |> 
   mutate(name = "EEZ",
          ref = "Lög 1979_0041",
-         link = "https://www.althingi.is/lagas/nuna/1979041.html") %>% 
+         link = "https://www.althingi.is/lagas/nuna/1979041.html") |> 
   select(name, ref, link)
 if(SAVE) {
- eez %>%
+  eez |>
     st_write(paste0(gpkg.path, "eez.gpkg"), append = FALSE)
 }
 ```
@@ -325,9 +355,13 @@ p +
   geom_sf(data = landhelgi, alpha = 0.3, fill = "red")
 ```
 
+```{r}
+knitr::opts_chunk$set(eval = FALSE)
+```
+
 ### Lög um veiðar í fiskveiðilandhelgi Íslands
 
-**TODO**: Check all calulations
+**TODO**: Check all calculations
 
 **TODO**: Check boundaries of C1 vs D1 and C4 vs D3. Caused by the difference of destPointRhumb vs st_buffer
 
@@ -338,15 +372,16 @@ sjá: [http://www.althingi.is/lagas/nuna/1997079.html](http://www.althingi.is/la
 Íslenskum skipum eru bannaðar veiðar með botnvörpu, flotvörpu og dragnót í fiskveiðilandhelgi Íslands nema á þeim veiðisvæðum og veiðitímum sem tilgreind eru í þessari grein, enda undanþiggi ráðherra ekki tiltekin svæði slíkum veiðum. Þegar rætt er um **viðmiðunarlínu** er átt við línu sem dregin er umhverfis landið á milli eftirtalinna staða: 
 
 ```{r}
+# https://www.althingi.is/altext/122/s/1047.html
 VP <- 
-  read_csv("external/vidmidunarpunktar.csv",
+  read_csv(here("external/vidmidunarpunktar.csv"),
            col_types = c("innci"))
 if(SAVE) {
-  VP %>% write_csv("/net/hafgola/var/ftp/pub/data/csv/vidmidunarpunktar.csv")
+  VP |> write_csv("/net/hafgola/var/ftp/pub/data/csv/vidmidunarpunktar.csv")
 }
-VP %>% 
-  mutate(breidd = pretty_coords(breidd),
-         lengd = pretty_coords(lengd, "V")) %>% 
+VP |> 
+  mutate(breidd = pretty_coordinates(breidd),
+         lengd = pretty_coordinates(lengd, "V")) |> 
   knitr::kable()
 ```
 
@@ -357,41 +392,41 @@ VP.pt <-
             tibble(vp = NA,
                    nafn = VP$nafn[1],
                    breidd = VP$breidd[1],
-                   lengd  = VP$lengd[1])) %>% 
+                   lengd  = VP$lengd[1])) |> 
   mutate(region = "meginland",
          lon = -GC(lengd),
-         lat =  GC(breidd)) %>% 
+         lat =  GC(breidd)) |> 
   st_as_sf(coords = c("lon", "lat"),
            crs = 4326,
            remove = FALSE)
 if(SAVE) {
-  VP.pt %>% 
+  VP.pt |> 
     write_sf(paste0(gpkg.path, "vidmidunarpunktar.gpkg"), append = FALSE)
 }
 
 VP.ls <- 
-  VP.pt %>% 
+  VP.pt |> 
   # Grunnpunktum breytt yfir í "grunnlínu" 
-  summarise(do_union = FALSE) %>% 
+  summarise(do_union = FALSE) |> 
   st_cast("LINESTRING")
 if(SAVE) {
-  VP.ls %>% write_sf(paste0(gpkg.path, "vidmidunarlina.gpkg"))
+  VP.ls |> write_sf(paste0(gpkg.path, "vidmidunarlina.gpkg"))
 }
 
 VP.po <- 
-  VP.ls %>% 
+  VP.ls |> 
   st_cast("POLYGON")
 
 VP.sfc <-
-  VP.po %>% 
+  VP.po |> 
   st_geometry()
 
 outside_x_miles <- function(miles = 12, VP = VP.sfc,  EEZ = eez.sfc) {
   VP <- 
-    VP %>% 
-    st_transform(crs = 9040) %>% 
-    st_buffer(dist = miles * 1852) %>% 
-    st_union() %>% 
+    VP |> 
+    st_transform(crs = 9040) |> 
+    st_buffer(dist = miles * 1852) |> 
+    st_union() |> 
     st_transform(crs = 4326)
   st_difference(EEZ, VP)
 }
@@ -399,48 +434,48 @@ outside_x_miles <- function(miles = 12, VP = VP.sfc,  EEZ = eez.sfc) {
 dest_point <- function(pt, b = 0, d = 1852 * 400) {
   destPointRhumb(pt,
                  b = b,
-                 d = d) %>% 
+                 d = d) |> 
     return()
 }
 
 coords_vp <- function(pt, VP = VP.pt) {
-  VP %>% 
-    filter(vp %in% pt) %>% 
+  VP |> 
+    filter(vp %in% pt) |> 
     st_coordinates()
 }
 
 lh <- function(p1, p2, b1, b2, VP = VP.pt) {
-  rbind(VP %>% 
-          filter(vp %in% p1:p2) %>% 
-          arrange(-vp) %>% 
+  rbind(VP |> 
+          filter(vp %in% p1:p2) |> 
+          arrange(-vp) |> 
           st_coordinates(),
         destPointRhumb(coords_vp(p1), b1, d = 1852 * 400),
         destPointRhumb(coords_vp(p2), b2, d = 1852 * 400),
-        VP %>% 
-          filter(vp %in% p2) %>% 
-          st_coordinates()) %>% 
-    as_tibble() %>%
+        VP |> 
+          filter(vp %in% p2) |> 
+          st_coordinates()) |> 
+    as_tibble() |>
     st_as_sf(coords = c("X", "Y"),
-             crs = 4326) %>% 
-    summarise(do_union = FALSE) %>% 
-    st_cast("LINESTRING") %>% 
+             crs = 4326) |> 
+    summarise(do_union = FALSE) |> 
+    st_cast("LINESTRING") |> 
     st_cast("POLYGON") 
 }
 eez.sfc <- st_geometry(eez)
 miles3 <- 
-  mainland %>% 
-  st_geometry() %>% 
-  st_transform(crs = 9040) %>% 
-  st_buffer(dist = 3 * 1852) %>% 
+  mainland |> 
+  st_geometry() |> 
+  st_transform(crs = 9040) |> 
+  st_buffer(dist = 3 * 1852) |> 
   st_transform(crs = 4326)
 miles3 <- 
   st_difference(eez.sfc, miles3)
 
 miles4 <- 
-  mainland %>% 
-  st_geometry() %>% 
-  st_transform(crs = 9040) %>% 
-  st_buffer(dist = 4 * 1852) %>% 
+  mainland |> 
+  st_geometry() |> 
+  st_transform(crs = 9040) |> 
+  st_buffer(dist = 4 * 1852) |> 
   st_transform(crs = 4326)
 miles4 <- 
   st_difference(eez.sfc, miles4)
@@ -460,20 +495,20 @@ Hér á eftir eru tilgreind þau svæði og tímar þar sem einstökum flokkum f
 # question here if the base crs should not be 9040 and then converted to
 #  crs 4326 in the end
 A <- 
-  lh(p1 = 1, p2 = 10, b1 = 0, b2 = 45, VP = VP.pt) %>% 
-  st_intersection(outside_x_miles(miles = 12)) %>% 
-  st_difference(GP.po %>% 
-                  filter(region %in% c("grimsey")) %>% 
-                  st_transform(crs = 9040) %>% 
-                  st_buffer(dist = 1852 * 12) %>% 
-                  st_transform(crs = 4326) %>% 
-                  st_geometry()) %>% 
-  st_difference(GP.po %>% 
-                  filter(region %in% c("kolbeinsey")) %>% 
-                  st_transform(crs = 9040) %>% 
-                  st_buffer(dist = 1852 * 12) %>% 
-                  st_transform(crs = 4326) %>% 
-                  st_geometry()) %>% 
+  lh(p1 = 1, p2 = 10, b1 = 0, b2 = 45, VP = VP.pt) |> 
+  st_intersection(outside_x_miles(miles = 12)) |> 
+  st_difference(GP.po |> 
+                  filter(region %in% c("grimsey")) |> 
+                  st_transform(crs = 9040) |> 
+                  st_buffer(dist = 1852 * 12) |> 
+                  st_transform(crs = 4326) |> 
+                  st_geometry()) |> 
+  st_difference(GP.po |> 
+                  filter(region %in% c("kolbeinsey")) |> 
+                  st_transform(crs = 9040) |> 
+                  st_buffer(dist = 1852 * 12) |> 
+                  st_transform(crs = 4326) |> 
+                  st_geometry()) |> 
   mutate(name = "A",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = A, fill = "pink")
@@ -489,14 +524,14 @@ p + geom_sf(data = A, fill = "pink")
 ```{r}
 # Includes B2
 B1 <- 
-  lh(p1 = 10, p2 = 19, b1 = 45, b2 = 90, VP = VP.pt) %>% 
-  st_intersection(outside_x_miles(miles = 12)) %>% 
-  st_difference(GP.po %>% 
-                  filter(region == "hvalbakur") %>% 
-                  st_transform(crs = 9040) %>% 
-                  st_buffer(dist = 1852 * 5) %>% 
-                  st_transform(crs = 4326) %>% 
-                  st_geometry()) %>% 
+  lh(p1 = 10, p2 = 19, b1 = 45, b2 = 90, VP = VP.pt) |> 
+  st_intersection(outside_x_miles(miles = 12)) |> 
+  st_difference(GP.po |> 
+                  filter(region == "hvalbakur") |> 
+                  st_transform(crs = 9040) |> 
+                  st_buffer(dist = 1852 * 5) |> 
+                  st_transform(crs = 4326) |> 
+                  st_geometry()) |> 
   mutate(name = "B1",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = B1, fill = "pink")
@@ -508,8 +543,8 @@ p + geom_sf(data = B1, fill = "pink")
 
 ```{r}
 B3 <- 
-  lh(p1 = 10, p2 = 13, b1 = 45, b2 = 90) %>% 
-  st_intersection(outside_x_miles(miles = 6)) %>% 
+  lh(p1 = 10, p2 = 13, b1 = 45, b2 = 90) |> 
+  st_intersection(outside_x_miles(miles = 6)) |> 
   mutate(name = "B3",
          s1 = FALSE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = B3, fill = "pink")
@@ -524,8 +559,8 @@ p + geom_sf(data = B3, fill = "pink")
 
 ```{r}
 C1 <- 
-  lh(p1 = 19, p2 = 28, b1 = 90, b2 = 180) %>% 
-  st_intersection(outside_x_miles(miles = 12)) %>% 
+  lh(p1 = 19, p2 = 28, b1 = 90, b2 = 180) |> 
+  st_intersection(outside_x_miles(miles = 12)) |> 
   mutate(name = "C1",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = C1, fill = "pink")
@@ -539,14 +574,14 @@ C2 <-
         destPointRhumb(coords_vp(19), b = 90, d = 1852 * 400),
         destPointRhumb(c(GC(-143250), GC(642410)), b = 180, d = 1852 * 400),
         c(GC(-143250), GC(642410)),
-        coords_vp(19)) %>% 
-  as_tibble() %>% 
+        coords_vp(19)) |> 
+  as_tibble() |> 
   st_as_sf(coords = c("X", "Y"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  st_intersection(outside_x_miles(miles = 4)) %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  st_intersection(outside_x_miles(miles = 4)) |> 
   mutate(name = "C2",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = C2, fill = "pink")
@@ -556,8 +591,8 @@ p + geom_sf(data = C2, fill = "pink")
 
 ```{r}
 C3 <- 
-  lh(p1 = 19, p2 = 22, b1 = 90, b2 = 180) %>% 
-  st_intersection(outside_x_miles(miles = 9)) %>% 
+  lh(p1 = 19, p2 = 22, b1 = 90, b2 = 180) |> 
+  st_intersection(outside_x_miles(miles = 9)) |> 
   mutate(name = "C3",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = C3, fill = "pink")
@@ -567,8 +602,8 @@ p + geom_sf(data = C3, fill = "pink")
 
 ```{r}
 C4 <- 
-  lh(p1 = 22, p2 = 28, b1 = 180, b2 = 180) %>% 
-  st_intersection(outside_x_miles(miles = 4)) %>% 
+  lh(p1 = 22, p2 = 28, b1 = 180, b2 = 180) |> 
+  st_intersection(outside_x_miles(miles = 4)) |> 
   mutate(name = "C4",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = C4, fill = "pink")
@@ -587,8 +622,8 @@ bb1 <-
             ymax = 65),
           crs = 4326)
 C5 <-
-  st_crop(miles4, bb1) %>% 
-  st_sf() %>% 
+  st_crop(miles4, bb1) |> 
+  st_sf() |> 
   mutate(name = "C5",
          s1 = FALSE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = C5, fill = "pink")
@@ -604,8 +639,8 @@ bb2 <-
             ymax = 65),
           crs = 4326)
 C6 <-
-  st_crop(miles4, bb2) %>% 
-  st_sf() %>% 
+  st_crop(miles4, bb2) |> 
+  st_sf() |> 
   mutate(name = "C6",
          s1 = FALSE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = C6, fill = "pink")
@@ -617,8 +652,8 @@ p + geom_sf(data = C6, fill = "pink")
 
 ```{r}
 C7 <- 
-  st_crop(miles3, bb1) %>% 
-  st_sf() %>% 
+  st_crop(miles3, bb1) |> 
+  st_sf() |> 
   mutate(name = "C7",
          s1 = FALSE, s2 = FALSE, s3 = TRUE)
 p + geom_sf(data = C7, fill = "pink")
@@ -628,8 +663,8 @@ p + geom_sf(data = C7, fill = "pink")
 
 ```{r}
 C8 <- 
-  st_crop(miles3, bb2) %>% 
-  st_sf() %>% 
+  st_crop(miles3, bb2) |> 
+  st_sf() |> 
   mutate(name = "C8",
          s1 = FALSE, s2 = FALSE, s3 = TRUE)
 p + geom_sf(data = C8, fill = "pink")
@@ -653,15 +688,15 @@ D1 <-
     # close the loop
     destPointRhumb(c(GC(-203630), GC(631760)), b = 180, d = 400 * 1852),
     destPointRhumb(coords_vp(28), b = 180, d = 220 * 1852),
-    destPointRhumb(coords_vp(28), b = 180, d = 12 * 1852)) %>% 
-  as_tibble() %>% 
+    destPointRhumb(coords_vp(28), b = 180, d = 12 * 1852)) |> 
+  as_tibble() |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  st_intersection(eez.sfc) %>%
-  st_sf() %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  st_intersection(eez.sfc) |>
+  st_sf() |> 
   mutate(name = "D1",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = D1, fill = "pink")
@@ -679,15 +714,15 @@ D2 <-
     # close the loop
     destPointRhumb(c(GC(-231710), GC(634070)), b = 180, d = 400 * 1852),
     destPointRhumb(c(GC(-203630), GC(631760)), b = 180, d = 400 * 1852),
-    destPointRhumb(c(GC(-203630), GC(631760)), b = 180, d = 4 * 1852)) %>% 
-  as_tibble() %>% 
+    destPointRhumb(c(GC(-203630), GC(631760)), b = 180, d = 4 * 1852)) |> 
+  as_tibble() |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  st_intersection(eez.sfc) %>% 
-  st_sf() %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  st_intersection(eez.sfc) |> 
+  st_sf() |> 
   mutate(name = "D2",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = D2, fill = "pink")
@@ -702,15 +737,15 @@ D3 <-
         # close the loop
         destPointRhumb(c(GC(-203630), GC(631760)), b = 180, d = 400 * 1852),
         destPointRhumb(coords_vp(28), b = 180, d = 400 * 1852),
-        destPointRhumb(coords_vp(28), b = 180, d = 4 * 1852)) %>% 
-  as_tibble() %>% 
+        destPointRhumb(coords_vp(28), b = 180, d = 4 * 1852)) |> 
+  as_tibble() |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  st_intersection(eez.sfc) %>% 
-  st_sf() %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  st_intersection(eez.sfc) |> 
+  st_sf() |> 
   mutate(name = "D3",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = D3, fill = "pink")
@@ -722,7 +757,7 @@ p + geom_sf(data = D3, fill = "pink")
 
 ```{r}
 D4 <- 
-  D3 %>% 
+  D3 |> 
   mutate(name = "D4",
          s1 = FALSE)
 p + geom_sf(data = D4, fill = "pink")
@@ -732,8 +767,8 @@ p + geom_sf(data = D4, fill = "pink")
 
 ```{r}
 D5 <-
-  lh(p1 = 28, p2 = 34, b1 = 180, b2 = 225) %>% 
-  st_intersection(outside_x_miles(miles = 4)) %>% 
+  lh(p1 = 28, p2 = 34, b1 = 180, b2 = 225) |> 
+  st_intersection(outside_x_miles(miles = 4)) |> 
   mutate(name = "D5",
          s1 = FALSE, s2 = TRUE, s3 = TRUE)
 
@@ -754,8 +789,8 @@ bb1 <-
             ymax = coords_vp(34)[2]),
           crs = 4326)
 D6 <-
-  st_crop(miles3, bb1) %>%
-  st_sf() %>% 
+  st_crop(miles3, bb1) |>
+  st_sf() |> 
   mutate(name = "D6",
          s1 = FALSE, s2 = FALSE, s3 = TRUE)
 p + geom_sf(data = D6, fill = "pink")
@@ -771,12 +806,12 @@ p + geom_sf(data = D6, fill = "pink")
 #   NOTE: Assume that west of unnamed point, but as written there is no bearing
 geirfugladrangi.landhelgi.5sjomilur <- 
   tibble(lon = GC( -231710),
-         lat = GC( 634070)) %>% 
+         lat = GC( 634070)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  st_transform(crs = 9040) %>% 
+           crs = 4326) |> 
+  st_transform(crs = 9040) |> 
   st_buffer(dist = 5 * 1852,
-            nQuadSeg = 360) %>% 
+            nQuadSeg = 360) |> 
   st_transform(crs = 4326)
 E1 <- 
   rbind(
@@ -784,15 +819,15 @@ E1 <-
     destPointRhumb(c(GC(-231710), GC(634070)), b = 180, d = 400 * 1852),
     destPointRhumb(c(GC(-241200), GC(644370)), b = 270, d = 400 * 1852),
     c(GC(-241200), GC(644370)),
-    c(GC(-231710), GC(634070))) %>% 
-  as_tibble() %>% 
+    c(GC(-231710), GC(634070))) |> 
+  as_tibble() |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  st_intersection(eez.sfc) %>% 
-  st_difference(geirfugladrangi.landhelgi.5sjomilur) %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  st_intersection(eez.sfc) |> 
+  st_difference(geirfugladrangi.landhelgi.5sjomilur) |> 
   mutate(name = "E1",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = E1, fill = "pink")
@@ -802,8 +837,8 @@ p + geom_sf(data = E1, fill = "pink")
 
 ```{r}
 E2 <- 
-  lh(p1 = 34, p2 = 34, b1 = 180, b2 = 270) %>% 
-  st_intersection(outside_x_miles(miles = 12)) %>% 
+  lh(p1 = 34, p2 = 34, b1 = 180, b2 = 270) |> 
+  st_intersection(outside_x_miles(miles = 12)) |> 
   mutate(name = "E2",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = E2, fill = "pink")
@@ -815,8 +850,8 @@ p + geom_sf(data = E2, fill = "pink")
 
 ```{r}
 E3 <- 
-  lh(p1 = 34, p2 = 38, b1 = 180, b2 = 270) %>% 
-  st_intersection(outside_x_miles(miles = 4)) %>% 
+  lh(p1 = 34, p2 = 38, b1 = 180, b2 = 270) |> 
+  st_intersection(outside_x_miles(miles = 4)) |> 
   mutate(name = "E3",
          s1 = FALSE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = E3, fill = "pink")
@@ -840,14 +875,14 @@ F1 <-
     # close the loop
     destPointRhumb(coords_vp(43), b = 270, d = 400 * 1852),
     destPointRhumb(c(GC(-241200), GC(644370)), b = 270, d = 400 * 1852),
-    c(GC(-241200), GC(644370))) %>% 
-  as_tibble() %>% 
+    c(GC(-241200), GC(644370))) |> 
+  as_tibble() |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  st_intersection(eez.sfc) %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  st_intersection(eez.sfc) |> 
   mutate(name = "F1",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 F1.alt <- 
@@ -861,14 +896,14 @@ F1.alt <-
     # close the loop
     destPointRhumb(coords_vp(43), b = 270, d = 400 * 1852),
     destPointRhumb(c(GC(-242600), GC(644370)), b = 270, d = 400 * 1852),
-    c(GC(-242600), GC(644370))) %>% 
-  as_tibble() %>% 
+    c(GC(-242600), GC(644370))) |> 
+  as_tibble() |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  st_intersection(eez.sfc) %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  st_intersection(eez.sfc) |> 
   mutate(name = "F1.alt",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = F1, fill = "pink")
@@ -880,7 +915,7 @@ p + geom_sf(data = F1, fill = "pink")
 
 ```{r}
 tmp1 <-
-  lh(p1 = 38, p2 = 40, b1 = 270, b2 = 270) %>%
+  lh(p1 = 38, p2 = 40, b1 = 270, b2 = 270) |>
   st_intersection(outside_x_miles(miles = 4))
 tmp2 <- 
   rbind(destPointRhumb(coords_vp(40), b = 270, d = 4 * 1852),
@@ -888,16 +923,16 @@ tmp2 <-
         # close the loop
         destPointRhumb(coords_vp(43), b = 270, d = 400 * 1852),
         destPointRhumb(coords_vp(40), b = 270, d = 400 * 1852),
-        destPointRhumb(coords_vp(40), b = 270, d = 4 * 1852)) %>% 
-  as_tibble() %>% 
+        destPointRhumb(coords_vp(40), b = 270, d = 4 * 1852)) |> 
+  as_tibble() |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
   st_intersection(eez.sfc)
 F2 <- 
-  st_union(tmp1, tmp2) %>% 
+  st_union(tmp1, tmp2) |> 
   mutate(name = "F2",
          s1 = FALSE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = F2, fill = "pink")
@@ -909,7 +944,7 @@ p + geom_sf(data = F2, fill = "pink")
 
 ```{r}
 F3 <- 
-  F2 %>% 
+  F2 |> 
   mutate(name = "F3",
          s1 = FALSE, s2 = FALSE, s3 = TRUE)
 p + geom_sf(data = F3, fill = "pink")
@@ -925,12 +960,12 @@ bb.ns <-
           -20, coords_vp(38)[,2],
           -35, coords_vp(38)[,2],
           -35, GC(651600),
-          -20, GC(651600)) %>% 
+          -20, GC(651600)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
   st_intersection(eez.sfc)
 # "west of" Öndverðarnesvita (vms. 41) og Skorarvita (vms. 42)
 bb.4142 <-
@@ -940,27 +975,27 @@ bb.4142 <-
         # close the loop
         destPointRhumb(coords_vp(38), b = 270, d = 400 * 1852),
         destPointRhumb(coords_vp(42), b = 270, d = 400 * 1852),
-        coords_vp(42)) %>% 
-  as_tibble() %>% 
+        coords_vp(42)) |> 
+  as_tibble() |> 
   st_as_sf(coords = c("X", "Y"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
   st_cast("POLYGON")
 # 4 miles around snæfellsnes
 VP.po.38.41.4miles <- 
-  VP.pt %>% 
-  filter(vp %in% 38:41) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  st_transform(crs = 9040) %>% 
-  st_buffer(dist = 4 * 1852) %>% 
+  VP.pt |> 
+  filter(vp %in% 38:41) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  st_transform(crs = 9040) |> 
+  st_buffer(dist = 4 * 1852) |> 
   st_transform(crs = 4326)
 F4 <-
-  st_difference(bb.4142, VP.po.38.41.4miles) %>% 
-  st_intersection(bb.ns) %>% 
-  st_intersection(eez.sfc) %>% 
+  st_difference(bb.4142, VP.po.38.41.4miles) |> 
+  st_intersection(bb.ns) |> 
+  st_intersection(eez.sfc) |> 
   mutate(name = "F4",
          s1 = FALSE, s2 = FALSE, s3 = TRUE)
 p + geom_sf(data = F4, fill = "pink")
@@ -974,31 +1009,31 @@ p + geom_sf(data = F4, fill = "pink")
 
 ```{r}
 p0 <-
-  VP.pt %>% 
-  filter(vp == 1) %>% 
+  VP.pt |> 
+  filter(vp == 1) |> 
   st_coordinates()
 p1 = 43
 p2 = 48
 b1 = 270
 b2 = 0
 G <- 
-  #lh(p1 = 43, p2 = 48, b1 = 270, b2 = 0) %>% 
+  #lh(p1 = 43, p2 = 48, b1 = 270, b2 = 0) |> 
   rbind(p0,
-        VP.pt %>% 
-          filter(vp %in% p1:p2) %>% 
-          arrange(-vp) %>% 
+        VP.pt |> 
+          filter(vp %in% p1:p2) |> 
+          arrange(-vp) |> 
           st_coordinates(),
         destPointRhumb(coords_vp(p1), b1, d = 1852 * 400),
         destPointRhumb(coords_vp(1), b2, d = 1852 * 400),
-        p0) %>% 
-  as_tibble() %>%
+        p0) |> 
+  as_tibble() |>
   st_as_sf(coords = c("X", "Y"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  st_intersection(outside_x_miles(miles = 12)) %>% 
-  #st_intersection(eez.sfc) %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  st_intersection(outside_x_miles(miles = 12)) |> 
+  #st_intersection(eez.sfc) |> 
   mutate(name = "G",
          s1 = TRUE, s2 = TRUE, s3 = TRUE)
 p + geom_sf(data = G, fill = "pink")
@@ -1007,21 +1042,21 @@ p + geom_sf(data = G, fill = "pink")
 ```{r}
 all <- 
   bind_rows(A, B1, B3, C1, C2, C3, C4, C5, C6, C7, C8,
-            D1, D2, D3, D4, D5, D6, E1, E2, E3, F1, F2, F3, F4, G) %>% 
-  mutate(ref = "Lög 1979_0041") %>% 
+            D1, D2, D3, D4, D5, D6, E1, E2, E3, F1, F2, F3, F4, G) |> 
+  mutate(ref = "Lög 1979_0041") |> 
   select(name, ref, s1, s2, s3)
 
-SF1 <- all %>% filter(s1) %>% st_union() %>% as_tibble() %>% mutate(name = "skipaflokkur 1")
-SF2 <- all %>% filter(s2) %>% st_union() %>% as_tibble() %>% mutate(name = "skipaflokkur 2")
-SF3 <- all %>% filter(s3) %>% st_union() %>% as_tibble() %>% mutate(name = "skipaflokkur 3")
+SF1 <- all |> filter(s1) |> st_union() |> as_tibble() |> mutate(name = "skipaflokkur 1")
+SF2 <- all |> filter(s2) |> st_union() |> as_tibble() |> mutate(name = "skipaflokkur 2")
+SF3 <- all |> filter(s3) |> st_union() |> as_tibble() |> mutate(name = "skipaflokkur 3")
 skipaflokkar <-
-  bind_rows(SF3, SF2, SF1) %>% 
-  st_as_sf() %>% 
+  bind_rows(SF3, SF2, SF1) |> 
+  st_as_sf() |> 
   mutate(ref = "Lög 1979_0041",
-         link = "http://www.althingi.is/lagas/nuna/1997079.html") %>% 
+         link = "http://www.althingi.is/lagas/nuna/1997079.html") |> 
   select(name, ref, link)
 if(SAVE) {
-  skipaflokkar %>% 
+  skipaflokkar |> 
     write_sf("/net/hafgola/var/ftp/pub/data/gpkg/log1979-0041.gpkg")
   system("chmod a+r /net/hafgola/var/ftp/pub/data/gpkg/log1979-0041.gpkg")
 }
@@ -1031,20 +1066,20 @@ if(SAVE) {
 skipaflokkar <- 
   read_sf("ftp://ftp.hafro.is/pub/data/gpkg/log1979-0041.gpkg")
 library(leaflet)
-all2 <- skipaflokkar  %>%  mutate(namef = as.factor(name))
+all2 <- skipaflokkar  |>  mutate(namef = as.factor(name))
 factpal <- colorFactor(topo.colors(5), all2$namef)
-leaflet() %>% 
-  addTiles() %>% 
+leaflet() |> 
+  addTiles() |> 
   addPolygons(data = all2,
               group = ~name,
               stroke = FALSE, 
               smoothFactor = 0.2, 
               fillOpacity = 0.66,
-              color = ~factpal(name)) %>% 
+              color = ~factpal(name)) |> 
   addPolygons(data = landhelgi,
-              group = "Landhelgi") %>% 
+              group = "Landhelgi") |> 
   addLayersControl(overlayGroups = c(all2$name, "Landhelgi"),
-                   options = layersControlOptions(collapsed = FALSE)) %>% 
+                   options = layersControlOptions(collapsed = FALSE)) |> 
   hideGroup(c("Landhelgi"))
 ```
 
@@ -1060,17 +1095,17 @@ Allar veiðar nema veiðar á uppsjávarfiski með flotvörpu og hringnót eru b
 
 ```{r, fig.width=9, fig.height = 4}
 rgl <- 
-  read_csv("external/2016_0942_reglugerd-um-verndun-koralsvaeda-ut-af-sudur- og-sudausturlandi.csv") %>%
-  unite(gr, c("gr", "gr2"), sep = ".") %>% 
+  read_csv("external/2016_0942_reglugerd-um-verndun-koralsvaeda-ut-af-sudur- og-sudausturlandi.csv") |>
+  unite(gr, c("gr", "gr2"), sep = ".") |> 
   mutate(lon = -GC(lengd),
-         lat =  GC(breidd)) %>% 
+         lat =  GC(breidd)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  group_by(gr, name) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  ungroup() %>% 
+           crs = 4326) |> 
+  group_by(gr, name) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  ungroup() |> 
   mutate(ref = "2016_0940",
          area = lwgeom::st_geod_area(.),
          allyear = TRUE,
@@ -1080,11 +1115,11 @@ rgl <-
          gid6 = TRUE,
          gid15 = TRUE,
          d1 = ymd("2021-01-01"),
-         d2 = ymd("2021-12-31")) %>% 
-  select(ref, gr, nafn = name, allyear:d2, area) %>% 
+         d2 = ymd("2021-12-31")) |> 
+  select(ref, gr, nafn = name, allyear:d2, area) |> 
   mutate(link = "https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/20299")
 if(SAVE) {
-  rgl %>% 
+  rgl |> 
     st_write(paste0(gpkg.path, "rgl2016-0942_korall.gpkg"),
              append = FALSE)
 }
@@ -1106,15 +1141,15 @@ Reglugerð þessi gildir um friðun þorsks, skarkola, blálöngu og steinbíts 
 rgl <- 
   read_csv("external/2019-0958_reglugerd-um-fridun-a-hrygningartima.csv")
 tmp <- 
-  rgl %>% 
+  rgl |> 
   mutate(lon = -geo::geoconvert.1(lengd),
-         lat =  geo::geoconvert.1(breidd)) %>% 
+         lat =  geo::geoconvert.1(breidd)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  group_by(gr, subset) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
+           crs = 4326) |> 
+  group_by(gr, subset) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
   mutate(gr2 = paste(gr, subset)) 
 ```
 
@@ -1127,20 +1162,20 @@ Reglugerð þesssi gildir um friðunarsvæði í íslenskri fiskveiðilandhelgi 
 
 ```{r}
 rgl <- 
-  read_csv("external/2019_0959_reglugerd-um-fridunarsvaedi-vid-island.csv") %>% 
+  read_csv("external/2019_0959_reglugerd-um-fridunarsvaedi-vid-island.csv") |> 
   mutate(lon = -GC(lengd),
-         lat =  GC(breidd)) %>% 
+         lat =  GC(breidd)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  group_by(gr, name, gid6, gid1) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  ungroup() %>% 
+           crs = 4326) |> 
+  group_by(gr, name, gid6, gid1) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  ungroup() |> 
   mutate(rgl = "2019_0959",
          allyear = TRUE, 
          area = lwgeom::st_geod_area(.),
-         gr = as.character(gr)) %>% 
+         gr = as.character(gr)) |> 
   select(rgl, gr, name, area, allyear, gid6, gid1)
 if(SAVE) {
   st_write(rgl, paste0(gpkg.path, "rgl2019-0959_fridunarsvaedi.gpkg"), 
@@ -1164,30 +1199,30 @@ Reglugerð þessi gildir um takmarkanir við veiðum með fiskibotnvörpu í fis
 
 ```{r}
 rgl <- 
-  read_csv("external/2019_0960_reglugerd-um-takmarkanir-vid-veidum-med-fiskibotnvorpu.csv") %>% 
-  rename(ref = rgl) %>% 
+  read_csv("external/2019_0960_reglugerd-um-takmarkanir-vid-veidum-med-fiskibotnvorpu.csv") |> 
+  rename(ref = rgl) |> 
   mutate(lon = -GC(lengd),
-         lat =  GC(breidd)) %>% 
+         lat =  GC(breidd)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  group_by(ref, gr, name, allyear, gid6, d1, d2, t1, t2) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
+           crs = 4326) |> 
+  group_by(ref, gr, name, allyear, gid6, d1, d2, t1, t2) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
   ungroup()
 
 # 6gr & 8gr: Að sunnan afmarkast svæðið af línu sem dregin er í 12 sjómílna 
 # fjarlægð frá viðmiðunarlínu, sbr. lög nr. 79/1997, um veiðar í
 # fiskveiðilandhelgi Íslands.
 rgl <- 
-  bind_rows(rgl %>% filter(!gr %in% c(6, 8)),
-            rgl %>% 
+  bind_rows(rgl |> filter(!gr %in% c(6, 8)),
+            rgl |> 
               # the 12 miles
-              filter(gr %in% c(6, 8)) %>% 
-              st_difference(VP.po %>% 
-                              st_transform(crs = 9040) %>% 
-                              st_buffer(dist = 12 * 1852) %>% 
-                              st_transform(crs = 4326))) %>% 
+              filter(gr %in% c(6, 8)) |> 
+              st_difference(VP.po |> 
+                              st_transform(crs = 9040) |> 
+                              st_buffer(dist = 12 * 1852) |> 
+                              st_transform(crs = 4326))) |> 
   arrange(gr)
 ```
 
@@ -1202,31 +1237,31 @@ bb.12.gr <-
           GC(-224190), 63,
           GC(-224190), GC(635000),
           GC(-145840), 64.6,
-          GC(-145840), 63) %>% 
+          GC(-145840), 63) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
   st_cast("POLYGON")
 
 gr12 <- 
-  mainland %>% 
-  st_transform(crs = 9040) %>% 
-  st_buffer(dist = 3 * 1852) %>% 
-  st_transform(crs = 4326) %>% 
-  st_intersection(bb.12.gr) %>% 
-  st_difference(mainland) %>% 
+  mainland |> 
+  st_transform(crs = 9040) |> 
+  st_buffer(dist = 3 * 1852) |> 
+  st_transform(crs = 4326) |> 
+  st_intersection(bb.12.gr) |> 
+  st_difference(mainland) |> 
   mutate(ref = "2019_0959",
          gr = 12,
          name = "Fyrir Suðurlandi",
          allyear = TRUE,
-         gid6 = TRUE) %>% 
-  select(ref, gr, name, allyear, gid6) %>% 
+         gid6 = TRUE) |> 
+  select(ref, gr, name, allyear, gid6) |> 
   rename(geometry = geom)
 
 
 rgl <- 
-  bind_rows(rgl, gr12) %>% 
+  bind_rows(rgl, gr12) |> 
   arrange(gr)
 ```
 
@@ -1248,48 +1283,48 @@ bb.surstey <-
             ymax = GC(631900)),
           crs = st_crs(4326))
 veyjar <- 
-  read_sf("ftp://ftp.hafro.is/pub/data/gpkg/mainland.gpkg") %>% 
-  st_transform(crs = 4326) %>% 
+  read_sf("ftp://ftp.hafro.is/pub/data/gpkg/mainland.gpkg") |> 
+  st_transform(crs = 4326) |> 
   st_crop(bb.eyjar)
 
 
 grein13 <- 
-  st_crop(biceland, bb.eyjar) %>% 
-  st_difference(st_as_sfc(bb.surstey)) %>% 
-  st_transform(crs = 9040) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_buffer(dist = 3 * 1852) %>% 
-  st_intersection(miles3 %>% st_transform(crs = 9040)) %>% 
-  st_transform(crs = 4326) %>% 
-  mutate(gid6 = TRUE) %>% 
+  st_crop(biceland, bb.eyjar) |> 
+  st_difference(st_as_sfc(bb.surstey)) |> 
+  st_transform(crs = 9040) |> 
+  summarise(do_union = FALSE) |> 
+  st_buffer(dist = 3 * 1852) |> 
+  st_intersection(miles3 |> st_transform(crs = 9040)) |> 
+  st_transform(crs = 4326) |> 
+  mutate(gid6 = TRUE) |> 
   rename(geometry = geom)
 
 ORNEFNI <- 
   gisland::read_lmi("IS_50V:ornefni_flakar") |> 
-  st_cast("GEOMETRYCOLLECTION") %>% 
+  st_cast("GEOMETRYCOLLECTION") |> 
   st_collection_extract("POLYGON")
 
 ornefni <- 
   ORNEFNI |> 
   filter(ornefni %in% c("Elliðaey", "Bjarnarey", "Heimaey", "Suðurey", 
-                          "Hellisey", "Súlnasker", "Geirfuglasker", "Geldungur",
-                          "Álsey", "Grasleysa", "Þrídrangar", "Einidrangur",
-                          "Surtsey", "Faxaskersviti", "Ystiklettur",
-                          "Brandur", "Faxasker")) 
+                        "Hellisey", "Súlnasker", "Geirfuglasker", "Geldungur",
+                        "Álsey", "Grasleysa", "Þrídrangar", "Einidrangur",
+                        "Surtsey", "Faxaskersviti", "Ystiklettur",
+                        "Brandur", "Faxasker")) 
 # this filter out too many
-  filter(nafnberi != "fiskimið")
+filter(nafnberi != "fiskimið")
 
 ornefni <- 
-  ornefni %>% 
+  ornefni |> 
   st_crop(bb.eyjar)
-  st_make_valid() |> 
+st_make_valid() |> 
   
-  select(nafn = nafnfitju) %>% 
+  select(nafn = nafnfitju) |> 
   st_centroid()
 ornefni.tb <- 
-  st_drop_geometry(ornefni) %>% 
-  bind_cols(st_coordinates(ornefni) %>% 
-              as_tibble() %>% 
+  st_drop_geometry(ornefni) |> 
+  bind_cols(st_coordinates(ornefni) |> 
+              as_tibble() |> 
               rename(lon = X, lat = Y))
 ```
 
@@ -1299,20 +1334,20 @@ Fótreipisvarpa er varpa sem búin er fótreipi gerðu úr vír eða keðju sem 
 
 ```{r}
 ornefni <- 
-  read_sf("~/stasi/gis/LMI/is_50v_ornefni_wgs_84.gpkg") %>% 
+  read_sf("~/stasi/gis/LMI/is_50v_ornefni_wgs_84.gpkg") |> 
   filter(nafnfitju %in% c("Elliðaey", "Bjarnarey", "Heimaey", "Suðurey", 
                           "Hellisey", "Súlnasker", "Geirfuglasker", "Geldungur",
-                          "Álsey", "Grasleysa", "Þrídrangar", "Einidrangur")) %>% 
+                          "Álsey", "Grasleysa", "Þrídrangar", "Einidrangur")) |> 
   filter(nafnberi_text != "fiskimið") |> 
   st_crop(bb.eyjar)
 
 pts3 <- 
-  ornefni %>% 
-  filter(nafnfitju %in% c("Grasleysa", "Þrídrangar", "Einidrangur")) %>% 
-  st_centroid() %>% 
-  select(nafn = nafnfitju) %>% 
-  st_coordinates() %>% 
-  as_tibble() %>% 
+  ornefni |> 
+  filter(nafnfitju %in% c("Grasleysa", "Þrídrangar", "Einidrangur")) |> 
+  st_centroid() |> 
+  select(nafn = nafnfitju) |> 
+  st_coordinates() |> 
+  as_tibble() |> 
   janitor::clean_names()
 
 
@@ -1323,11 +1358,11 @@ bb.ystiklettur <-
             ymax = 63.45769),
           crs = 4326)
 ystiklettur <- 
-  biceland %>% 
-  st_crop(bb.ystiklettur) %>% 
-  st_coordinates() %>% 
-  as_tibble() %>% 
-  filter(X == max(X)) %>% 
+  biceland |> 
+  st_crop(bb.ystiklettur) |> 
+  st_coordinates() |> 
+  as_tibble() |> 
+  filter(X == max(X)) |> 
   select(lon = X, lat = Y)
 bb <- 
   tribble(~nafn, ~lon, ~lat,
@@ -1343,13 +1378,13 @@ bb <-
           NA_character_,   GC(-211440), GC(643000))
 
 grein13.exception <- 
-  bb %>% 
+  bb |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  st_intersection(grein13) %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  st_intersection(grein13) |> 
   mutate(ref = "2019_0960",
          gr = 13,
          name = "Umhverfis Vestmannaeyjar",
@@ -1361,14 +1396,14 @@ grein13.exception <-
 # 21. febrúar til og með 15. maí
 
 gr13 <- 
-  st_difference(grein13, grein13.exception) %>% 
+  st_difference(grein13, grein13.exception) |> 
   mutate(ref = "2019_0960",
          gr = 13,
          name = "Umhverfis Vestmannaeyjar",
          allyear = TRUE,
          gid6 = TRUE,
          d1 = ymd("2021-01-01"),
-         d2 = ymd("2021-12-31")) %>% 
+         d2 = ymd("2021-12-31")) |> 
   select(ref, gr, name, allyear, gid6, d1, d2)
 ggplot() +
   theme_void() +
@@ -1379,19 +1414,19 @@ ggplot() +
   geom_point(data = ornefni.tb, aes(lon, lat), colour = "red")
 
 rgl <- 
-  bind_rows(rgl, gr13, grein13.exception) %>% 
-  arrange(gr) %>% 
+  bind_rows(rgl, gr13, grein13.exception) |> 
+  arrange(gr) |> 
   mutate(gr = as.character(gr),
-         area = lwgeom::st_geod_area(.)) %>% 
-  select(ref:t2, area) %>%
+         area = lwgeom::st_geod_area(.)) |> 
+  select(ref:t2, area) |>
   mutate(d1 = if_else(is.na(d1), ymd("2021-01-01"), d1, NA_Date_),
-         d2 = if_else(is.na(d2), ymd("2021-12-31"), d2, NA_Date_)) %>% 
+         d2 = if_else(is.na(d2), ymd("2021-12-31"), d2, NA_Date_)) |> 
   mutate(link = "https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/21660")
 # NOTE the t1 and t2 are dropped when saved
 if(SAVE) {
-  rgl %>% 
+  rgl |> 
     mutate(t1 = as.character(t1),
-           t2 = as.character(t2)) %>% 
+           t2 = as.character(t2)) |> 
     st_write("/net/www/export/home/ftp/pub/data/spatial/rgl2019-0960_fiskibotnvarpa-takmarkanir.gpkg",
              append = FALSE)
   system("chmod a+rX /net/www/export/home/ftp/pub/data/spatial/rgl2019-0960_fiskibotnvarpa-takmarkanir.gpkg")
@@ -1411,38 +1446,38 @@ m@map
 
 ```{r}
 rgl <-
-  read_csv("external/2019_0961_reglugerð-um-takmarkanir-vid-veidum-med-linu-a-djupslod.csv") %>% 
+  read_csv("external/2019_0961_reglugerð-um-takmarkanir-vid-veidum-med-linu-a-djupslod.csv") |> 
   mutate(lon = GC(-lengd),
-         lat = GC(breidd)) %>% 
+         lat = GC(breidd)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  group_by(gr, nafn, gid1, allyear, d1, d2) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
+           crs = 4326) |> 
+  group_by(gr, nafn, gid1, allyear, d1, d2) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
   ungroup()
 
 # 2gr & 4gr: Að sunnan afmarkast svæðið af línu sem dregin er í 12 sjómílna 
 # fjarlægð frá viðmiðunarlínu, sbr. lög nr. 79/1997, um veiðar í
 # fiskveiðilandhelgi Íslands.
 rgl <- 
-  bind_rows(rgl %>% filter(!gr %in% c(2, 4)),
-            rgl %>% 
+  bind_rows(rgl |> filter(!gr %in% c(2, 4)),
+            rgl |> 
               # the 12 miles
-              filter(gr %in% c(2, 4)) %>% 
-              st_difference(VP.po %>% 
-                              st_transform(crs = 9040) %>% 
-                              st_buffer(dist = 12 * 1852) %>% 
-                              st_transform(crs = 4326))) %>% 
-  arrange(gr) %>% 
+              filter(gr %in% c(2, 4)) |> 
+              st_difference(VP.po |> 
+                              st_transform(crs = 9040) |> 
+                              st_buffer(dist = 12 * 1852) |> 
+                              st_transform(crs = 4326))) |> 
+  arrange(gr) |> 
   mutate(ref = "2019_0261",
          area = lwgeom::st_geod_area(.),
          d1 = if_else(is.na(d1), ymd("2021-01-01"), d1, NA_Date_),
-         d2 = if_else(is.na(d2), ymd("2021-12-31"), d2, NA_Date_)) %>% 
-  select(ref, gr:d2, area) %>% 
+         d2 = if_else(is.na(d2), ymd("2021-12-31"), d2, NA_Date_)) |> 
+  select(ref, gr:d2, area) |> 
   mutate(link = "https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/21661")
 if(SAVE) {
-  rgl %>% 
+  rgl |> 
     st_write(paste0(gpkg.path, "rgl2019-0961_lina-takmarkanir.gpkg"),
              append = FALSE)
 }
@@ -1466,26 +1501,26 @@ mapview(rgl2019_0961, zcol = "allyear")
 # NOTE: gr 18.2 is not working here
 #       Some other parts of the regulation also not included
 eez.po <- 
-  st_difference(st_geometry(eez), st_geometry(mainland)) %>% 
+  st_difference(st_geometry(eez), st_geometry(mainland)) |> 
   st_transform(crs = 5325)
 
 rgl <- 
   read_csv("external/2019_0963_reglugerd-um-veidar-med-dragnot-vid-island.csv") 
 
 pt <-
-  rgl %>% 
-  group_by(gr) %>% 
-  mutate(n = n()) %>% 
-  ungroup() %>% 
+  rgl |> 
+  group_by(gr) |> 
+  mutate(n = n()) |> 
+  ungroup() |> 
   mutate(lon = GC(-lengd),
-         lat = GC(breidd)) %>% 
+         lat = GC(breidd)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
+           crs = 4326) |> 
   st_transform(5325)
 li <- 
-  pt %>% 
-  group_by(gr) %>%
-  summarise(do_union = FALSE) %>%
+  pt |> 
+  group_by(gr) |>
+  summarise(do_union = FALSE) |>
   st_cast("LINESTRING")
 
 res <- list()
@@ -1496,23 +1531,23 @@ for(i in 1:length(GR)) {
   # If a polygon
   if(GR[i] %in% c("27.F", "28.B")) {
     res[[i]] <-
-      li %>% 
-      filter(gr == GR[i]) %>% 
-      st_cast("POLYGON") %>% 
-      st_sf() %>% 
+      li |> 
+      filter(gr == GR[i]) |> 
+      st_cast("POLYGON") |> 
+      st_sf() |> 
       mutate(gr = GR[i])
     # Here just lines
   } else {
     
     DIST <- 5000
     x <- 
-      st_split_fun(eez.po, li %>% filter(gr == GR[i]), dist = DIST) %>% 
-      st_sf() %>% 
+      st_split_fun(eez.po, li |> filter(gr == GR[i]), dist = DIST) |> 
+      st_sf() |> 
       mutate(gr = GR[i])
     if(nrow(x) == 0) {
       x <- 
-        st_split_fun(eez.po, li %>% filter(gr == GR[i]), dist = 2 * DIST) %>% 
-        st_sf() %>% 
+        st_split_fun(eez.po, li |> filter(gr == GR[i]), dist = 2 * DIST) |> 
+        st_sf() |> 
         mutate(gr = GR[i])
     }
     #if(nrow(x) == 0) print(nrow(x))
@@ -1522,9 +1557,9 @@ for(i in 1:length(GR)) {
 }
 
 po <- 
-  res %>% 
-  bind_rows() %>% 
-  left_join(rgl %>% select(gr, nafn) %>% distinct())
+  res |> 
+  bind_rows() |> 
+  left_join(rgl |> select(gr, nafn) |> distinct())
 
 
 
@@ -1539,29 +1574,29 @@ bb <-
         destPointRhumb(p1, b = 180, d = 220 * 1852),
         destPointRhumb(p2, b = 180, d = 220 * 1852),
         p2,
-        p1) %>% 
-  as_tibble() %>% 
+        p1) |> 
+  as_tibble() |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
   st_bbox()
 
-#st_difference(eez, miles3) %>% 
-#  st_difference(mainland) %>% 
-#  st_geometry() %>% 
+#st_difference(eez, miles3) |> 
+#  st_difference(mainland) |> 
+#  st_geometry() |> 
 #  st_crop(bb)
 #2019_0263
 if(SAVE) {
-  st_write(po %>% st_transform(crs = 4326), "/net/www/export/home/ftp/pub/data/spatial/rgl2019_0263_dragnot-incomplete.gpkg",
+  st_write(po |> st_transform(crs = 4326), "/net/www/export/home/ftp/pub/data/spatial/rgl2019_0263_dragnot-incomplete.gpkg",
            append = FALSE)
   system("chmod a+rX /net/www/export/home/ftp/pub/data/spatial/rgl2019_0263_dragnot-incomplete.gpkg")
 }
 ```
 
 ```{r, fig.width = 9, fig.height = 4}
-read_sf("ftp://ftp.hafro.is/pub/data/spatial/rgl2019_0263_dragnot-incomplete.gpkg") %>% 
+read_sf("ftp://ftp.hafro.is/pub/data/spatial/rgl2019_0263_dragnot-incomplete.gpkg") |> 
   mapview(zcol = "nafn")
 ```
 
@@ -1582,14 +1617,14 @@ gr5A <-
           5,   "A", 160000,  645000,
           5,   "A", 143000,  642630,
           5,   "A", 143000,  600000,
-          5,   "A", 230000,  600000) %>% 
+          5,   "A", 230000,  600000) |> 
   mutate(lon = -geo_convert(lon),
-         lat =  geo_convert(lat)) %>% 
+         lat =  geo_convert(lat)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
   st_difference(mainland)
 # B. Við Eldey eru úthafsrækjuveiðar óheimilar á svæði sem að sunnan markast af
 # línu sem dregin er réttvísandi 245° frá Reykjanesaukavita. Að vestan markast
@@ -1604,28 +1639,28 @@ bb1 <-
           223500, 635500,
           224151.78, 634801.68, # Reykjanesaukaviti 	
           224200, 600000,
-          234000, 600000) %>% 
+          234000, 600000) |> 
   mutate(lon = -geo_convert(lon),
-         lat =  geo_convert(lat)) %>% 
+         lat =  geo_convert(lat)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
   st_cast("POLYGON")
 
 rnes2 <- c(-geo_convert(224151.78), geo_convert(634801.68))
 pt2 <- dest_point(rnes2, 245)
-pt3 <- pt2 %>% dest_point(b = 0)
-pt4 <- pt3 %>% dest_point(b = 90)
+pt3 <- pt2 |> dest_point(b = 0)
+pt4 <- pt3 |> dest_point(b = 90)
 gr5B <- 
-  rbind(rnes2, pt2, pt3, pt4, rnes2) %>% 
-  as_tibble() %>% 
+  rbind(rnes2, pt2, pt3, pt4, rnes2) |> 
+  as_tibble() |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
-  st_intersection(bb1) %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
+  st_intersection(bb1) |> 
   st_difference(mainland)
 #p2 <- mapedit::editFeatures(p)
 
@@ -1641,23 +1676,23 @@ gr5C <-
             651500, 240250,
             651500, 254000,
             640500, 254000,
-            640490, 224360) %>% 
+            640490, 224360) |> 
   mutate(lon = -geo_convert(lon),
-         lat =  geo_convert(lat)) %>% 
+         lat =  geo_convert(lat)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
   st_difference(mainland)
 
 gr5 <- 
-  bind_rows(gr5A %>% mutate(gr = 5, gr2 = "A", nafn = "Suðurland"),
-            gr5B %>% mutate(gr = 5, gr2 = "B", nafn = "Eldey"),
-            gr5C %>% mutate(gr = 5, gr2 = "C", nafn = "Snæfellsnes")) %>% 
-  mutate(area = lwgeom::st_geod_area(.)) %>% 
+  bind_rows(gr5A |> mutate(gr = 5, gr2 = "A", nafn = "Suðurland"),
+            gr5B |> mutate(gr = 5, gr2 = "B", nafn = "Eldey"),
+            gr5C |> mutate(gr = 5, gr2 = "C", nafn = "Snæfellsnes")) |> 
+  mutate(area = lwgeom::st_geod_area(.)) |> 
   select(gr:nafn, area)
-mapview(eez %>% st_cast("LINESTRING")) + mapview(gr5, zcol = "nafn")
+mapview(eez |> st_cast("LINESTRING")) + mapview(gr5, zcol = "nafn")
 # IV. KAFLI Rækjuveiðar á Dohrnbanka -------------------------------------------
 
 # V. KAFLI Rækjuveiðar á grunnslóð ---------------------------------------------
@@ -1669,11 +1704,11 @@ mapview(eez %>% st_cast("LINESTRING")) + mapview(gr5, zcol = "nafn")
 # via mapedit
 bb <- 
   tibble(lon = c(-24.00000, -24.00000, -23.79639, -23.52722, -22.74719, -22.02210, -21.50000, -21.50000, -24.00000),
-         lat = c(65.25000, 65.50000, 65.48107, 65.54709, 65.70804, 65.68769, 65.50000, 65.25000, 65.25000)) %>% 
+         lat = c(65.25000, 65.50000, 65.48107, 65.54709, 65.70804, 65.68769, 65.50000, 65.25000, 65.25000)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
   st_cast("POLYGON")
 
 
@@ -1686,18 +1721,18 @@ CHECK: link below says this one is "ógild"
 [link](https://www.reglugerd.is/reglugerdir/eftir-raduneytum/atvinnuvega--og-nyskopunarraduneyti/nr/21665)
 ```{r, fig.width=9, fig.height=6}
 rgl2019_0265 <- 
-  read_csv("external/2019_0965_reglugerd-um-timabundnar-lokanir-a-veidisvaedum-a-grunnslod-vid-island.csv") %>% 
+  read_csv("external/2019_0965_reglugerd-um-timabundnar-lokanir-a-veidisvaedum-a-grunnslod-vid-island.csv") |> 
   mutate(lon = GC(-lengd),
-         lat = GC(breidd)) %>% 
+         lat = GC(breidd)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  group_by(gr) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
+           crs = 4326) |> 
+  group_by(gr) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
   st_cast("POLYGON")
 rgl2019_0265 <- 
-  rgl2019_0265 %>% 
-  st_difference(mainland) %>% 
+  rgl2019_0265 |> 
+  st_difference(mainland) |> 
   select(gr)
 mapview(rgl2019_0265, zcol = "gr")
 #st_write(rgl2019_0265, "/net/www/export/home/ftp/pub/data/shapes/grunnslod_incomplete.gpkg")
@@ -1739,17 +1774,17 @@ surtsey.fridland <-
           1,    631608, 204115,
           2,    632022, 204115,
           3,    632022, 203116,
-          4,    631608, 203116) %>% 
+          4,    631608, 203116) |> 
   mutate(lon = -geo::geoconvert.1(lengd),
-         lat =  geo::geoconvert.1(breidd)) %>% 
+         lat =  geo::geoconvert.1(breidd)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
   mutate(type = "Auglýsing",
          ref = "2006/0050",
-         gr = "3") %>% 
+         gr = "3") |> 
   select(type, ref, gr)
 ```
 
@@ -1766,21 +1801,21 @@ surtsey <-
           2,   204000,  631608,
           3,   204000,  631752,
           4,   203531,  632022,
-          5,   203116,  631815) %>% 
+          5,   203116,  631815) |> 
   mutate(lon = -geo::geoconvert.1(lengd),
-         lat =  geo::geoconvert.1(breidd)) %>% 
+         lat =  geo::geoconvert.1(breidd)) |> 
   st_as_sf(coords = c("lon", "lat"),
-           crs = 4326) %>% 
-  summarise(do_union = FALSE) %>% 
-  st_cast("LINESTRING") %>% 
-  st_cast("POLYGON") %>% 
+           crs = 4326) |> 
+  summarise(do_union = FALSE) |> 
+  st_cast("LINESTRING") |> 
+  st_cast("POLYGON") |> 
   mutate(type = "Auglýsing",
          ref = "2006/0050",
          gr = "8",
-         area = lwgeom::st_geod_area(.)) %>% 
-  select(type, ref, gr, area) %>% 
+         area = lwgeom::st_geod_area(.)) |> 
+  select(type, ref, gr, area) |> 
   mutate(link = "https://www.stjornartidindi.is/Advert.aspx?ID=611b81d2-d439-4c98-a21e-23b8bb9abcf8")
-#surtsey %>% 
+#surtsey |> 
 #  write_sf("/net/www/export/home/ftp/pub/data/shapes/surtsey_auglysing-2006-0050.gpkg")
 #system("chmod a+r /net/www/export/home/ftp/pub/data/shapes/surtsey_auglysing-2006-0050.gpkg")
 ```

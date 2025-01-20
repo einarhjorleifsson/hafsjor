@@ -59,6 +59,68 @@ hs_add_veidar <- function(map) {
                                          opacity = 1))
 }
 
+
+hs_add_veidar_new <- function(map) {
+  map |>
+    addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+                layers = "test:effort_01",
+                group = "Longline",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+                layers = "test:effort_02",
+                group = "Net",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+                layers = "test:effort_03",
+                group = "Jiggers",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+                layers = "test:effort_05",
+                group = "Demersal seine",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+                layers = "test:effort_06",
+                group = "Fish trawl",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+                layers = "test:effort_09",
+                group = "Nephrops trawl",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+                layers = "test:effort_14",
+                group = "Shrimp trawl",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         #crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+                layers = "test:effort_15",
+                group = "Dredge",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         #crs = "EPSG:3057",
+                                         opacity = 1))
+
+}
+
 hs_add_log <- function(map) {
   map |>
     addWMSTiles(baseUrl = "https://gis.lmi.is/geoserver/wms",
@@ -90,4 +152,66 @@ hs_add_lifriki <- function(map) {
              format = "image/png",
              info_format = "text/html",
              tiled = TRUE))
+}
+
+
+hs_add_veidar_2018 <- function(map) {
+  map |>
+    addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+                layers = "test:2018_longline",
+                group = "Longline",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+                layers = "test:2018_net",
+                group = "Gill net",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+                layers = "test:2018_jiggers",
+                group = "Jiggers",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+                layers = "test:2018_dseine",
+                group = "Demersal seine",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+                layers = "test:2018_trawl",
+                group = "Fish trawl",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+                layers = "test:2018_nephrops",
+                group = "Nephrops trawl",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+                layers = "test:2018_shrimp",
+                group = "Shrimp trawl",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         #crs = "EPSG:3057",
+                                         opacity = 1)) |>
+    addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+                layers = "test:2018_dredge",
+                group = "Dredge",
+                options = WMSTileOptions(format = "image/png",
+                                         transparent  = TRUE,
+                                         #crs = "EPSG:3057",
+                                         opacity = 1))
+
 }

@@ -23,7 +23,7 @@ website:
 
 format:
   html:
-    theme: cosmo
+    theme: flatly
     css: styles.css
     toc: false
     echo: false

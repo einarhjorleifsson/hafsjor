@@ -35,7 +35,7 @@ m <-
   leaflet.extras::addGroupedLayersControl(
     baseGroups = c("Hnöttur", "Botnlag"),
     overlayGroups = list(
-      "Sókn" = c("Fish trawl", "Shrimp trawl", "Nephrops trawl", "Longline"),
+      "Sókn" = c("Longline", "Net", "Jiggers", "Demersal seine", "Fish trawl", "Shrimp trawl", "Nephrops trawl", "Dredge"),
       "Lífríki" = c("Botndýr"),
       "Lög" = c("12 mílur", "EEZ", "Skipaflokkar"),
       "Reglugerðir" = c("Nothing here yet")

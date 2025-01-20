@@ -1,0 +1,118 @@
+---
+title: "Display data from geoserver in R"
+description: "Just a little code snippets."
+date: "2024-11-13"
+categories: ["coding"]
+---
+
+
+```{r}
+library(leaflet)
+library(leaflet.extras2)
+```
+
+Let's generate a base map:
+
+```{r}
+m <-
+  leaflet() |>
+  addTiles() |>
+  setView(-19, 65, zoom = 5)
+```
+
+Within R one can easily get a map up via, here taking data from the "old" hafro-geoserver:
+
+```{r}
+m |>
+   addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+              layers = "hafro:trawl_3857_byte",
+              options = WMSTileOptions(format = "image/png",
+                                       transparent  = TRUE,
+                                       tiled = TRUE,
+                                       opacity = 1))
+```
+
+On the same geoserver we have (note now in "test"):
+
+```{r}
+m |>
+   addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+              layers = "test:trawl_3857_byte",
+              options = WMSTileOptions(format = "image/png",
+                                       transparent  = TRUE,
+                                       tiled = TRUE,
+                                       opacity = 1))
+```
+
+
+On the same geoserver we also have a trial that does not work:
+
+```{r}
+m |>
+   addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+              layers = "test:effort06_na_trial",
+              options = WMSTileOptions(format = "image/png",
+                                       transparent  = TRUE,
+                                       tiled = TRUE,
+                                       opacity = 1))
+```
+
+Now unfortunately, because one has to use point-and-mouse-click when populating geoserver it is unknown why the above does not work.
+
+Rather than trying a raster lets try a simple line:
+
+```{r}
+m |>
+   addWMSTiles(baseUrl = "https://gis.hafogvatn.is/geoserver/hafro/wms",
+              layers = "log:grunnlinur_1979-0041",
+              options = WMSTileOptions(format = "image/png",
+                                       transparent  = TRUE,
+                                       tiled = TRUE,
+                                       opacity = 1))
+```
+
+
+Strange brew. If we just do something analogous taking data from the LMÍ geoserver:
+
+```{r}
+m |>
+  addWMSTiles(baseUrl = "https://gis.lmi.is/geoserver/wms",
+              layers = "LHG:landhelgi_12_milur_lina",
+              group = "12 mílur",
+              options = WMSTileOptions(format = "image/png",
+                                       transparent  = TRUE,
+                                       #crs = "EPSG:3857",
+                                       tiled = TRUE,
+                                       opacity = 1))
+```
+
+..., solution pending
+
+
+```{r}
+m |> 
+  addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+              layers = "test:adlaeg-belti_1979-0041",
+              group = "12 mílur",
+              options = WMSTileOptions(format = "image/png",
+                                       transparent  = TRUE,
+                                       #crs = "EPSG:3857",
+                                       tiled = TRUE,
+                                       opacity = 1))
+
+
+
+m |> 
+  addWMSTiles(baseUrl = "https://hafsja-geoserver.dev.hafogvatn.cloud/geoserver/wms",
+              layers = "log:adlaeg-belti_1979-0041",
+              group = "12 mílur",
+              options = WMSTileOptions(format = "image/png",
+                                       transparent  = TRUE,
+                                       #crs = "EPSG:3857",
+                                       tiled = TRUE,
+                                       opacity = 1))
+
+
+
+```
+

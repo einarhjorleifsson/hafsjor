@@ -1,0 +1,128 @@
+---
+title: "Surtsey - vessel traffic"
+description: "I was asked if one could get an overview of cruise ship traffic in the vicinity of Surtsey using the ais-databases the Institute has access to. Here a little summary is provided using the ASTD dataset."
+date: "2024-11-19"
+categories: []
+---
+
+## Premble
+
+The dataset the analysis is based on is the ASTD dataset. This means that the analysis is not based on a full census, smaller vessels that use x type transponder not being included.
+
+```{r, eval = FALSE}
+library(tidyverse)
+library(arrow)
+library(sf)
+library(gisland)
+astd <- open_dataset("~/stasi/fishydata/data/astd")
+surtsey.fridland <- 
+  tribble(~id, ~breidd, ~lengd,
+          1,    631608, 204115,
+          2,    632022, 204115,
+          3,    632022, 203116,
+          4,    631608, 203116) %>% 
+  mutate(lon = -geo::geoconvert.1(lengd),
+         lat =  geo::geoconvert.1(breidd)) %>% 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326) %>% 
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING") %>% 
+  st_cast("POLYGON") %>% 
+  mutate(fridland = TRUE) |> 
+  select(fridland)
+s <- 
+  gisland::gl_lmi_strandlina() |> 
+  filter(uuid == "41b93b88-a17c-14f2-9d09-0aa8c9c4b7de")
+# very close to surtsey shore
+s_250m <- 
+  s |> 
+  st_transform(crs = 9040) |> 
+  st_buffer(dist = 250) |> # meters
+  st_transform(crs = 4326) |> 
+  mutate(m250 = TRUE) |> 
+  select(m250)
+# area for filtering
+s_6miles <- 
+  s |> 
+  st_transform(crs = 9040) |> 
+  st_buffer(dist = 6 * 1852) |> # meters
+  st_transform(crs = 4326) |> 
+  mutate(miles6 = TRUE) |> 
+  select(miles6)
+bb <- st_bbox(s_6miles)
+xmin <- bb[[1]]
+xmax <- bb[[3]]
+ymin <- bb[[2]]
+ymax <- bb[[4]]
+
+trail <- 
+  astd |> 
+  filter(eez == "ISL",
+         between(lon, xmin, xmax),
+         between(lat, ymin, ymax)) |> 
+  collect() 
+trail <- 
+  trail |> 
+  mutate(cat = case_when(astd_cat %in% c("Cruise ships", "Passenger ships", 
+                                         "Fishing vessels",
+                                         "Other activities", "Unknown") ~ astd_cat,
+                         .default = "Other")) |> 
+  st_as_sf(coords = c("lon", "lat"),
+           crs = 4326,
+           remove = FALSE) |> 
+  st_join(s_250m) |> 
+  st_join(s_6miles) |> 
+  st_join(surtsey.fridland) |> 
+  st_drop_geometry() |> 
+  mutate(area = case_when(m250 == TRUE ~ "  250 meters",
+                          fridland == TRUE ~ " friðland",
+                          miles6 == TRUE ~ "6 miles",
+                          .default = "outsid")) |> 
+  select(-c(m250, fridland, miles6))
+
+
+
+trail |> 
+  filter(cat %in% c("Cruise ships")) |> 
+  mutate(date = floor_date(time, "month")) |> 
+  group_by(date, area) |> 
+  summarise(n = n_distinct(mmsi)) |> 
+  ggplot(aes(date, n, fill = area)) +
+  geom_col()
+
+trail |> 
+  filter(cat %in% c("Cruise ships")) |> 
+  mutate(speed = ifelse(speed > 15, 15, speed)) |> 
+  arrange(-speed) |> 
+  ggplot() +
+  theme_bw() +
+  geom_sf(data = surtsey.fridland, fill = "yellow") +
+  geom_sf(data = s) +
+  geom_point(aes(lon, lat, colour = speed),
+             size = 0.5) +
+  scale_colour_viridis_c(option = "inferno") +
+  labs(x = NULL, y = NULL)
+
+
+trail |> 
+  select(mmsi,
+         time,
+         lon, lat, speed) |> 
+  arrange(mmsi, time) |> 
+  group_by(mmsi) |> 
+  mutate(dt = difftime(lead(time), time, units = "mins"),
+         dt = as.numeric(dt)) |> 
+  fill(dt) |> 
+  mutate(ev = case_when(dt > 60 * 24 * 2 ~ "new",
+                        .default = "same"),
+         trip = dplyr::consecutive_id(ev)) |> 
+  ungroup() |> 
+  filter(ev == "same") |> 
+  group_by(mmsi, trip) |> 
+  reframe(dt = sum(dt) / 60) |> 
+  ggplot(aes(dt)) + geom_histogram(binwidth = 1) +
+  scale_y_log10() +
+  labs(x = "Tími innan svæðis", y = "Fjöldi ferða")
+
+```
+

@@ -2,7 +2,7 @@
 title: "raster as geopackage"
 ---
 
-```{r}
+```{r, eval = FALSE}
 library(raster)
 library(sf)
 library(tidyverse)
